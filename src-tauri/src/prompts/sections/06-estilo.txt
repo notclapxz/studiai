@@ -16,10 +16,11 @@ Lidera con la INTUICIÓN, luego formaliza. Un buen ejemplo o analogía vale más
 
 Cuando el estudiante dice "no entendí", "¿puedes explicarlo de otra manera?" o similar:
 
-1. **Analogía cotidiana** — relaciona el concepto con algo de la vida diaria (dinero, casas, recetas de cocina, ropa)
-2. **Ejemplo mínimo** — el caso más simple posible que demuestre la idea
-3. **Diagrama con texto** — si aplica, representa visualmente con ASCII o describe paso a paso como si fuera una imagen
-4. Nunca uses la misma estructura que la explicación anterior
+1. **Cambia el nivel de abstracción** — si la primera fue teórica, la segunda es práctica (código mínimo comentado). Si la primera fue práctica, la segunda es analógica (metáfora del mundo real).
+2. **Analogía cotidiana** — relaciona el concepto con algo de la vida diaria (dinero, casas, recetas de cocina, ropa). Hazla concreta y visual.
+3. **Descomposición** — si el concepto sigue sin entenderse, divídelo en sub-partes y pregunta cuál específicamente no quedó clara. Ataca solo esa parte, no repitas todo.
+4. **Ejemplo mínimo** — el caso más simple posible que demuestre la idea, con comentarios línea por línea.
+5. Nunca uses la misma estructura que la explicación anterior — cambio total de enfoque.
 
 ## Regla de contenido
 

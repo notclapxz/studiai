@@ -87,13 +87,17 @@ jobs:
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         shell: bash
         run: |
-          SIG=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos -name "*.tar.gz.sig" 2>/dev/null | head -1)
+          echo "=== Searching for .sig files ==="
+          find src-tauri/target -name "*.sig" 2>/dev/null || echo "No .sig files found in target/"
+          find . -name "*.sig" -not -path "*/node_modules/*" 2>/dev/null || echo "No .sig files found anywhere"
+          
+          SIG=$(find src-tauri/target -name "*.tar.gz.sig" 2>/dev/null | head -1)
           if [ -n "$SIG" ]; then
             echo "Found sig: $SIG"
             cp "$SIG" /tmp/mac_arm.sig
           else
-            echo "No sig found, creating empty"
-            echo "" > /tmp/mac_arm.sig
+            echo "WARNING: No .sig file found"
+            touch /tmp/mac_arm.sig
           fi
 
       - name: Save mac sig as artifact
@@ -108,13 +112,16 @@ jobs:
         if: matrix.os == 'windows-latest'
         shell: bash
         run: |
-          SIG=$(find src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis -name "*.sig" 2>/dev/null | head -1)
+          echo "=== Searching for .sig files on Windows ==="
+          find src-tauri/target -name "*.sig" 2>/dev/null || echo "No .sig files found"
+          
+          SIG=$(find src-tauri/target -name "*.sig" 2>/dev/null | head -1)
           if [ -n "$SIG" ]; then
             echo "Found sig: $SIG"
             cp "$SIG" /tmp/win.sig
           else
-            echo "No sig found"
-            echo "" > /tmp/win.sig
+            echo "WARNING: No .sig file found on Windows"
+            touch /tmp/win.sig
           fi
 
       - name: Save win sig as artifact
@@ -124,11 +131,14 @@ jobs:
           name: win-sig
           path: /tmp/win.sig
           retention-days: 1
+          if-no-files-found: warn
 
   publish-update-manifest:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download mac sig
         uses: actions/download-artifact@v4
         with:

@@ -20,7 +20,8 @@ Asistente de IA para estudiantes universitarios peruanos. Se conecta a tu Canvas
 
 ## Requisitos
 
-- macOS (Apple Silicon o Intel)
+- **Windows** 10/11 (x64)
+- **macOS** (Apple Silicon M1/M2/M3 o Intel)
 - Cuenta institucional con acceso a Canvas (USIL)
 - Conexión a internet
 
@@ -28,28 +29,34 @@ Asistente de IA para estudiantes universitarios peruanos. Se conecta a tu Canvas
 
 ## Instalación
 
-### 1. Descargar
+### Windows
 
-Ve a [Releases](../../releases) y descarga el archivo `.dmg` más reciente.
+1. Ve a [Releases](../../releases) y descarga el archivo `.msi` o `.exe`
+2. Ejecuta el instalador y sigue los pasos
+3. Abre **StudiAI** desde el menú inicio
 
-### 2. Instalar
+### macOS (Apple Silicon — M1/M2/M3)
 
-Abre el `.dmg` y arrastra `studyai.app` a tu carpeta **Aplicaciones**.
+1. Descarga el `.dmg` con `aarch64` en el nombre
+2. Ábrelo y arrastra `studyai.app` a **Aplicaciones**
 
-### 3. Bypass de seguridad de macOS
+### macOS (Intel)
 
-Como la app no está firmada con Apple Developer ($99/año), macOS la bloqueará la primera vez. Dos opciones:
+1. Descarga el `.dmg` con `x64` en el nombre
+2. Ábrelo y arrastra `studyai.app` a **Aplicaciones**
+
+### ⚠️ macOS — Bypass de seguridad
+
+Como la app no está firmada con Apple Developer, macOS la bloqueará la primera vez:
 
 **Opción A — Clic derecho:**
-1. Clic derecho sobre `studyai.app` en Aplicaciones
-2. Selecciona **Abrir**
-3. En el diálogo, haz clic en **Abrir** nuevamente
+1. Clic derecho sobre `studyai.app` → **Abrir**
+2. En el diálogo, clic en **Abrir**
 
 **Opción B — Terminal:**
 ```bash
 xattr -cr /Applications/studyai.app
 ```
-Luego abre la app normalmente.
 
 ---
 

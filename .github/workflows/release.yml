@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            label: macOS-Apple-Silicon
+          - os: macos-13
+            target: x86_64-apple-darwin
+            label: macOS-Intel
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: Windows-x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create .env
+        shell: bash
+        run: |
+          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+          echo "VITE_CULQI_PUBLIC_KEY=${{ secrets.VITE_CULQI_PUBLIC_KEY }}" >> .env
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: StudiAI ${{ github.ref_name }}
+          releaseBody: |
+            ## Instalación
+
+            ### Windows
+            Descarga el archivo `.msi` o `.exe` e instálalo normalmente.
+
+            ### macOS (Apple Silicon — M1/M2/M3)
+            Descarga el `.dmg` con `aarch64` en el nombre.
+
+            ### macOS (Intel)
+            Descarga el `.dmg` con `x64` en el nombre.
+
+            ---
+
+            **Primera vez en macOS:** Si macOS bloquea la app, haz clic derecho → Abrir → Abrir.
+            O en terminal: `xattr -cr /Applications/studyai.app`
+          releaseDraft: false
+          prerelease: false
+          args: --target ${{ matrix.target }}

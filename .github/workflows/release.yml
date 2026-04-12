@@ -83,20 +83,31 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }}
 
+      - name: Debug signing key
+        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
+        shell: bash
+        run: |
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is SET (length: ${#TAURI_SIGNING_PRIVATE_KEY})"
+          else
+            echo "ERROR: TAURI_SIGNING_PRIVATE_KEY is EMPTY"
+          fi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+
       - name: Upload .sig artifacts
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         shell: bash
         run: |
-          echo "=== Searching for .sig files ==="
-          find src-tauri/target -name "*.sig" 2>/dev/null || echo "No .sig files found in target/"
-          find . -name "*.sig" -not -path "*/node_modules/*" 2>/dev/null || echo "No .sig files found anywhere"
+          echo "=== All files in bundle ==="
+          find src-tauri/target/aarch64-apple-darwin/release/bundle -type f 2>/dev/null | sort || echo "Bundle dir not found"
           
-          SIG=$(find src-tauri/target -name "*.tar.gz.sig" 2>/dev/null | head -1)
+          SIG=$(find src-tauri/target -name "*.sig" 2>/dev/null | head -1)
           if [ -n "$SIG" ]; then
             echo "Found sig: $SIG"
             cp "$SIG" /tmp/mac_arm.sig
           else
-            echo "WARNING: No .sig file found"
+            echo "WARNING: No .sig file found — signing may have failed"
             touch /tmp/mac_arm.sig
           fi
 

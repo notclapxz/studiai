@@ -83,24 +83,23 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }}
 
-      - name: Collect signatures (macOS aarch64 only)
-        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
-        shell: bash
-        run: |
-          mkdir -p /tmp/sigs
-          # Guardar firma del .tar.gz de Apple Silicon
-          SIG_PATH="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/studyai.app.tar.gz.sig"
-          if [ -f "$SIG_PATH" ]; then
-            cp "$SIG_PATH" /tmp/sigs/mac_arm.sig
-          fi
-
       - name: Upload sig artifacts
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         uses: actions/upload-artifact@v4
         with:
           name: mac-arm-sig
-          path: /tmp/sigs/
+          path: src-tauri/target/aarch64-apple-darwin/release/bundle/macos/studyai.app.tar.gz.sig
           retention-days: 1
+          if-no-files-found: warn
+
+      - name: Upload windows sig artifact
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: win-sig
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.nsis.zip.sig
+          retention-days: 1
+          if-no-files-found: warn
 
   publish-update-manifest:
     needs: build
@@ -108,11 +107,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download sig artifacts
+      - name: Download mac sig
         uses: actions/download-artifact@v4
         with:
           name: mac-arm-sig
-          path: /tmp/sigs/
+          path: /tmp/sigs/mac/
+        continue-on-error: true
+
+      - name: Download win sig
+        uses: actions/download-artifact@v4
+        with:
+          name: win-sig
+          path: /tmp/sigs/win/
         continue-on-error: true
 
       - name: Generate latest.json
@@ -123,10 +129,8 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           TAG=${GITHUB_REF_NAME}
 
-          MAC_ARM_SIG=$(cat /tmp/sigs/mac_arm.sig 2>/dev/null || echo "")
-
-          # Obtener firma de Windows desde los assets del release
-          WIN_SIG=$(gh release download ${TAG} --pattern "*.nsis.zip.sig" --dir /tmp/win-sig 2>/dev/null && cat /tmp/win-sig/*.sig 2>/dev/null || echo "")
+          MAC_ARM_SIG=$(cat /tmp/sigs/mac/*.sig 2>/dev/null | head -1 || echo "")
+          WIN_SIG=$(cat /tmp/sigs/win/*.sig 2>/dev/null | head -1 || echo "")
 
           cat > latest.json << ENDJSON
           {
@@ -135,11 +139,11 @@ jobs:
             "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
             "platforms": {
               "darwin-aarch64": {
-                "url": "https://github.com/notclapxz/studiai/releases/download/${TAG}/studyai_${VERSION}_aarch64.app.tar.gz",
+                "url": "https://github.com/notclapxz/studiai/releases/download/${TAG}/studyai_aarch64.app.tar.gz",
                 "signature": "${MAC_ARM_SIG}"
               },
               "darwin-x86_64": {
-                "url": "https://github.com/notclapxz/studiai/releases/download/${TAG}/studyai_${VERSION}_x64.app.tar.gz",
+                "url": "https://github.com/notclapxz/studiai/releases/download/${TAG}/studyai_x64.app.tar.gz",
                 "signature": ""
               },
               "windows-x86_64": {

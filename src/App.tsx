@@ -5,17 +5,18 @@
 //     Supabase detecta el hash fragment automaticamente (detectSessionInUrl: true).
 //   - Produccion (app empaquetada): callback via deep link studiai://auth/callback
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Login } from "./pages/Login";
 import { MainLayout } from "./pages/MainLayout";
 import { Onboarding } from "./pages/Onboarding";
 import { Paywall } from "./pages/Paywall";
 import { supabase } from "./lib/supabase";
 import { useAuthStore } from "./store/authStore";
-import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import Database from "@tauri-apps/plugin-sql";
 import { AlertTriangle } from "lucide-react";
+import { checkForUpdates } from "./lib/updater";
+import { useToasts, ToastContainer } from "./components/Toast";
 import "./App.css";
 
 // ─── Tipos auxiliares ─────────────────────────────────────────────────────────
@@ -293,6 +294,32 @@ function App() {
     checkLicense,
   } = useAuthStore();
   const [appState, setAppState] = useState<AppState>("login");
+  const { toasts, addToast, dismissToast } = useToasts();
+
+  // ── Efecto: chequear actualizaciones al montar (una sola vez) ────────────
+
+  useEffect(() => {
+    checkForUpdates(({ version, onInstall }) => {
+      addToast({
+        variant: "success",
+        message: `Nueva versión ${version} disponible — descargando...`,
+        duration: 5000,
+      });
+      // Descargar e instalar en background; relaunch automatico al terminar
+      onInstall()
+        .then(() => {
+          // relaunch() ya fue llamado dentro de onInstall — nunca llega aqui
+        })
+        .catch((err) => {
+          console.error("[Updater] Error instalando update:", err);
+          addToast({
+            variant: "error",
+            message: "Error al instalar la actualización. Reintenta más tarde.",
+            duration: 5000,
+          });
+        });
+    });
+  }, []);
 
   // ── Efecto: verificar sesion al montar + listener de cambios de auth ──────
 
@@ -598,19 +625,32 @@ function App() {
   // ── Render segun estado ──────────────────────────────────────
 
   if (appState === "login" || !user) {
-    return <Login onLogin={() => setAppState("main")} />;
+    return (
+      <>
+        <Login onLogin={() => setAppState("main")} />
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
   }
 
   if (appState === "paywall") {
-    return <Paywall onContinuarSinIA={handleContinuarSinIA} />;
+    return (
+      <>
+        <Paywall onContinuarSinIA={handleContinuarSinIA} />
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </>
+    );
   }
 
   if (appState === "onboarding") {
     return (
-      <Onboarding
-        onComplete={handleOnboardingComplete}
-        onGoToSettings={handleOnboardingGoToSettings}
-      />
+      <>
+        <Onboarding
+          onComplete={handleOnboardingComplete}
+          onGoToSettings={handleOnboardingGoToSettings}
+        />
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </>
     );
   }
 
@@ -635,6 +675,7 @@ function App() {
         <div className="flex-1 min-h-0 [&>div]:!h-full">
           <MainLayout key={mainLayoutKey} />
         </div>
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
@@ -650,11 +691,17 @@ function App() {
         <div className="flex-1 min-h-0 [&>div]:!h-full">
           <MainLayout key={mainLayoutKey} />
         </div>
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       </div>
     );
   }
 
-  return <MainLayout key={mainLayoutKey} />;
+  return (
+    <>
+      <MainLayout key={mainLayoutKey} />
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+    </>
+  );
 }
 
 export default App;

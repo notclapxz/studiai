@@ -82,3 +82,72 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: --target ${{ matrix.target }}
+
+      - name: Collect signatures (macOS aarch64 only)
+        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
+        shell: bash
+        run: |
+          mkdir -p /tmp/sigs
+          # Guardar firma del .tar.gz de Apple Silicon
+          SIG_PATH="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/studyai.app.tar.gz.sig"
+          if [ -f "$SIG_PATH" ]; then
+            cp "$SIG_PATH" /tmp/sigs/mac_arm.sig
+          fi
+
+      - name: Upload sig artifacts
+        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-arm-sig
+          path: /tmp/sigs/
+          retention-days: 1
+
+  publish-update-manifest:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download sig artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: mac-arm-sig
+          path: /tmp/sigs/
+        continue-on-error: true
+
+      - name: Generate latest.json
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          TAG=${GITHUB_REF_NAME}
+
+          MAC_ARM_SIG=$(cat /tmp/sigs/mac_arm.sig 2>/dev/null || echo "")
+
+          # Obtener firma de Windows desde los assets del release
+          WIN_SIG=$(gh release download ${TAG} --pattern "*.nsis.zip.sig" --dir /tmp/win-sig 2>/dev/null && cat /tmp/win-sig/*.sig 2>/dev/null || echo "")
+
+          cat > latest.json << ENDJSON
+          {
+            "version": "${VERSION}",
+            "notes": "Nueva versión de StudiAI disponible.",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "darwin-aarch64": {
+                "url": "https://github.com/notclapxz/studiai/releases/download/${TAG}/studyai_${VERSION}_aarch64.app.tar.gz",
+                "signature": "${MAC_ARM_SIG}"
+              },
+              "darwin-x86_64": {
+                "url": "https://github.com/notclapxz/studiai/releases/download/${TAG}/studyai_${VERSION}_x64.app.tar.gz",
+                "signature": ""
+              },
+              "windows-x86_64": {
+                "url": "https://github.com/notclapxz/studiai/releases/download/${TAG}/studyai_${VERSION}_x64-setup.exe",
+                "signature": "${WIN_SIG}"
+              }
+            }
+          }
+          ENDJSON
+
+          gh release upload ${TAG} latest.json --clobber

@@ -1,0 +1,497 @@
+/* App.css — Estilos globales de StudiAI USIL
+   Tailwind 4: la configuración va aquí con @theme, no en tailwind.config.js */
+
+@import "tailwindcss";
+@import "./styles/tokens.css";
+
+/* ── Extensión del tema Tailwind 4 con nuestros tokens ─────────── */
+@theme {
+  --color-bg-base: var(--bg-base);
+  --color-bg-surface: var(--bg-surface);
+  --color-bg-surface-hover: var(--bg-surface-hover);
+  --color-bg-surface-active: var(--bg-surface-active);
+  --color-border-base: var(--border-base);
+  --color-text-strong: var(--text-strong);
+  --color-text-base: var(--text-base);
+  --color-text-weak: var(--text-weak);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+}
+
+/* ── Base styles ────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  background-color: var(--bg-base);
+  color: var(--text-base);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Sin selección de texto en elementos de UI (comportamiento nativo) */
+  user-select: none;
+}
+
+/* ── Scrollbar personalizada ────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* ── Permitir selección en áreas de texto ───────────────────────── */
+p,
+span,
+li,
+h1, h2, h3, h4, h5, h6,
+code, pre,
+.selectable,
+.prose,
+.prose *,
+textarea,
+input {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+
+/* ── Animaciones ────────────────────────────────────────────────── */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.15s ease-out;
+}
+
+@keyframes rail-shimmer {
+  0%   { bottom: 80%; height: 20% }
+  50%  { bottom: 0%;  height: 40% }
+  100% { bottom: 80%; height: 20% }
+}
+
+/* ── Settings modal animations ─────────────────────────────────── */
+@keyframes settings-backdrop-in {
+  from { opacity: 0 }
+  to   { opacity: 1 }
+}
+
+@keyframes settings-backdrop-out {
+  from { opacity: 1 }
+  to   { opacity: 0 }
+}
+
+@keyframes settings-content-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes settings-content-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+.settings-modal-backdrop {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  animation: settings-backdrop-in 0.2s ease-out both;
+}
+
+.settings-modal-backdrop-out {
+  animation: settings-backdrop-out 0.15s ease-in both;
+}
+
+.settings-modal-content {
+  animation: settings-content-in 0.2s ease-out both;
+}
+
+.settings-modal-content-out {
+  animation: settings-content-out 0.15s ease-in both;
+}
+
+/* ── Thinking dots animation (iMessage-style) ─────────────────── */
+@keyframes thinking-bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-6px);
+    opacity: 1;
+  }
+}
+
+.thinking-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6a6a6a;
+  animation: thinking-bounce 1.4s ease-in-out infinite;
+}
+
+/* ── Chat copy button hover ──────────────────────────────────── */
+.chat-copy-icon:hover {
+  color: #e0e0e0 !important;
+}
+
+/* ── KaTeX equation styling ──────────────────────────────────── */
+.prose .katex-display {
+  margin: 0.75em 0;
+  text-align: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.prose .katex {
+  color: #e0e0e0;
+  font-size: 1.15em;
+}
+
+.prose .katex-display > .katex {
+  font-size: 1.4em;
+}
+
+/* ── Markdown rendering (marked + shiki) ─────────────────────── */
+/* Estructura basica del contenido renderizado por MarkdownContent. */
+.prose p {
+  margin-bottom: 0.5rem;
+}
+.prose p:last-child {
+  margin-bottom: 0;
+}
+.prose ul {
+  margin-bottom: 0.5rem;
+  margin-left: 1rem;
+  list-style: disc;
+}
+.prose ul li + li,
+.prose ol li + li {
+  margin-top: 0.25rem;
+}
+.prose ol {
+  margin-bottom: 0.5rem;
+  margin-left: 1rem;
+  list-style: decimal;
+}
+.prose li {
+  line-height: 1.625;
+}
+.prose strong {
+  font-weight: 600;
+  color: var(--text-base);
+}
+.prose a {
+  color: #fab283;
+  text-decoration: underline;
+}
+/* Inline code */
+.prose :not(pre) > code {
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  background: var(--bg-surface-active);
+}
+/* Shiki code blocks — limitamos altura con scroll interno (pattern OpenCode). */
+.prose pre,
+.prose pre.shiki,
+.prose pre.markdown-code-block {
+  max-height: 240px;
+  overflow: auto;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin-bottom: 0.5rem;
+  background: var(--bg-surface-active);
+}
+.prose pre code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+}
+/* Las tablas renderizadas por marked entran aquí: aplicamos los estilos de
+   .chat-table directamente sobre .prose table sin wrapper. */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  color: #e0e0e0;
+  margin: 0.5rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #4b4c5c;
+  display: block;
+  overflow-x: auto;
+}
+.prose thead {
+  background: #252525;
+}
+.prose th {
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #e0e0e0;
+  border-bottom: 2px solid #fab283;
+}
+.prose tr {
+  border-bottom: 1px solid #4b4c5c;
+}
+.prose tr:last-child {
+  border-bottom: none;
+}
+.prose tbody tr:nth-child(odd) {
+  background: #1a1a1a;
+}
+.prose tbody tr:nth-child(even) {
+  background: #212121;
+}
+.prose td {
+  padding: 8px 12px;
+}
+
+/* ── Chat table styling (OpenCode palette) ───────────────────── */
+.chat-table-wrapper {
+  overflow-x: auto;
+  margin: 0.5rem 0;
+  border-radius: 8px;
+  border: 1px solid #4b4c5c;
+}
+
+.chat-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  color: #e0e0e0;
+}
+
+.chat-thead {
+  background: #252525;
+}
+
+.chat-th {
+  padding: 8px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #e0e0e0;
+  border-bottom: 2px solid #fab283;
+}
+
+.chat-tr {
+  border-bottom: 1px solid #4b4c5c;
+}
+
+.chat-tr:last-child {
+  border-bottom: none;
+}
+
+.chat-tr:nth-child(odd) {
+  background: #1a1a1a;
+}
+
+.chat-tr:nth-child(even) {
+  background: #212121;
+}
+
+.chat-thead .chat-tr {
+  background: #252525;
+}
+
+.chat-td {
+  padding: 8px 12px;
+}
+
+/* ─── Razonamiento visible (thinking-visible 2026-04-10, polish v2) ──────────
+   Bloque collapsible que muestra el thought-summary de Gemini 2.5 Flash por
+   encima del contenido principal del mensaje del asistente.
+   v2: más respiración, headers de pasos destacados, mejor scan-ability.
+*/
+.message-thoughts {
+  margin-bottom: 14px;
+  border-left: 2px solid rgba(250, 178, 131, 0.4);
+  padding: 10px 14px 12px 14px;
+  background: rgba(250, 178, 131, 0.045);
+  border-radius: 6px;
+  font-size: 0.86em;
+  color: #9a9a9a;
+}
+
+.thoughts-header {
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+  color: #c8a380;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  letter-spacing: 0.02em;
+}
+
+.thoughts-header:hover {
+  color: #d4b894;
+}
+
+/* Disclaimer "(en ingles)" junto al header — avisa que el razonamiento del
+ * modelo está hardcoded en inglés por limitación de Gemini 2.5 Flash
+ * (ver adk-python#1312). */
+.thoughts-disclaimer {
+  font-size: 0.85em;
+  color: #888;
+  font-weight: 400;
+  font-style: italic;
+}
+
+.thoughts-header::-webkit-details-marker {
+  display: none;
+}
+
+.thoughts-header::before {
+  content: "▸";
+  display: inline-block;
+  transition: transform 150ms ease;
+  font-size: 11px;
+  color: #c8a380;
+}
+
+.message-thoughts[open] > .thoughts-header::before {
+  transform: rotate(90deg);
+}
+
+.thoughts-body {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  color: #989898;
+  line-height: 1.65;
+}
+
+/* Cada párrafo es un paso de razonamiento — más respiración entre ellos */
+.thoughts-body p {
+  margin: 0 0 12px 0;
+  font-style: italic;
+}
+
+.thoughts-body p:last-child {
+  margin-bottom: 0;
+}
+
+/* Headers de cada paso (ej "**Analizando la pregunta**") destacados en color
+   pero más pequeños que los del mensaje principal */
+.thoughts-body strong,
+.thoughts-body b {
+  display: block;
+  font-style: normal;
+  font-weight: 600;
+  color: #b89873;
+  font-size: 0.95em;
+  margin-bottom: 4px;
+  letter-spacing: 0.01em;
+}
+
+.thoughts-body h1,
+.thoughts-body h2,
+.thoughts-body h3,
+.thoughts-body h4 {
+  font-size: 0.95em;
+  font-weight: 600;
+  font-style: normal;
+  color: #b89873;
+  margin: 12px 0 4px 0;
+  letter-spacing: 0.01em;
+}
+
+.thoughts-body h1:first-child,
+.thoughts-body h2:first-child,
+.thoughts-body h3:first-child,
+.thoughts-body h4:first-child {
+  margin-top: 0;
+}
+
+.thoughts-body ul,
+.thoughts-body ol {
+  margin: 4px 0 12px 0;
+  padding-left: 20px;
+}
+
+.thoughts-body li {
+  margin: 3px 0;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.thoughts-body code {
+  font-style: normal;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 0.92em;
+}
+
+/* Separador horizontal entre thoughts (cuando se concatenan con --- en MD) */
+.thoughts-body hr {
+  border: none;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  margin: 14px 0;
+}
+

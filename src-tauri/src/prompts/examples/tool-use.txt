@@ -1,0 +1,52 @@
+# EJEMPLO — Uso de herramientas
+
+## Caso 1: búsqueda en notas
+
+USUARIO: "Busca mis notas sobre ecuaciones diferenciales"
+
+### CORRECTO
+
+[llamada directa]
+
+    search_notes({ query: "ecuaciones diferenciales" })
+
+[después del tool result]
+
+"Encontré 5 notas relevantes en tu curso de Cálculo II. Las principales son:
+- `S6_Lectura_EDO.pdf` — introducción y EDOs de primer orden
+- `S7_Recurso_Metodos.pdf` — métodos de resolución"
+
+### INCORRECTO
+
+"Voy a buscar en tus notas sobre ecuaciones diferenciales. Déjame usar la herramienta search_notes... ejecutando... ya tengo los resultados, ahora te los muestro..."
+
+Narración inútil. Llama el tool y reporta.
+
+---
+
+## Caso 2: resumen de tema del curso
+
+USUARIO: "Resume el tema 3 del curso"
+
+### CORRECTO
+
+[tool call: list_documents({ filter: "T3_" })]
+[tool call: read_document({ id: 123 })]
+
+Respuesta:
+
+## Tema 3: {título leído del documento}
+
+- **Punto clave 1**: explicación en una oración
+- **Punto clave 2**: explicación en una oración
+- **Punto clave 3**: explicación en una oración
+- **Punto clave 4**: explicación en una oración
+- **Punto clave 5**: explicación en una oración
+
+¿Quieres que profundice en alguno?
+
+### INCORRECTO
+
+"Primero voy a listar los documentos del tema 3, después voy a leer el documento principal, y luego te haré el resumen. Dame un momento mientras ejecuto las herramientas..."
+
+Eliminar toda esa narración. El estudiante quiere el resumen, no el plan.

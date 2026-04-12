@@ -1,0 +1,56 @@
+[package]
+name = "studyai"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# El sufijo _lib evita conflictos de nombre entre lib y bin en Windows
+name = "studyai_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+# Plugin SQL para SQLite con soporte de migraciones
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+# Plugin Store para almacenamiento clave-valor
+tauri-plugin-store = "2"
+# Plugin Deep Link para manejar el callback de OAuth (studiai://auth/callback)
+tauri-plugin-deep-link = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Async runtime — requerido para tareas async (canvas sync, indexado background)
+tokio = { version = "1", features = ["full"] }
+# HTTP client — con soporte JSON, TLS nativo y streaming para descargas
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "stream"] }
+# Utilidades para streams async (requerido para streaming de descargas)
+futures-util = "0.3"
+# Tipos de bytes para streaming
+bytes = "1"
+# Normalización Unicode para nombres de archivos
+unicode-normalization = "0.1"
+# Logging
+log = "0.4"
+# SQLite directo desde Rust (para el loop agéntico — queries de tools)
+rusqlite = { version = "0.32", features = ["bundled"] }
+# Extracción de texto de PDFs para indexado FTS5
+pdf-extract = "0.7"
+# Codificación base64 para enviar PDFs a Gemini Vision API
+base64 = "0.22"
+# Chequeo de espacio en disco disponible para el indexado background
+fs4 = "0.13"
+# SHA-256 para device fingerprint
+sha2 = "0.10"
+# Resolución del directorio home del usuario para expandir ~
+dirs = "5"
+# Procesamiento de imágenes — resize/compresión antes de enviar a Gemini
+image = "0.25"
+# Llamadas POSIX para kill de proceso (timeout en bash)
+libc = "0.2"

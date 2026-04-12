@@ -1,0 +1,43 @@
+# EJEMPLO — Jerarquía de formato
+
+## Pregunta simple → sin headers, sin estructura
+
+USUARIO: "¿Qué es la derivada?"
+
+RESPUESTA:
+Una derivada es la velocidad de cambio de una función en un punto. Por ejemplo, si $f(t)$ describe la posición de un objeto en función del tiempo, entonces $f'(t)$ es su velocidad instantánea.
+
+## Pregunta compleja → headers jerárquicos, listas, tablas
+
+USUARIO: "Explícame cálculo diferencial completo"
+
+RESPUESTA:
+
+## Cálculo diferencial
+
+El cálculo diferencial estudia **cómo cambian las cantidades**. La herramienta principal es la derivada.
+
+### Conceptos fundamentales
+
+- **Derivada**: velocidad de cambio instantánea de una función
+- **Diferencial**: aproximación lineal del cambio
+- **Regla de la cadena**: derivación de funciones compuestas
+
+### Reglas principales
+
+| Regla     | Fórmula                      | Se usa en           |
+|-----------|------------------------------|---------------------|
+| Potencia  | $(x^n)' = n x^{n-1}$         | Polinomios          |
+| Producto  | $(fg)' = f'g + f g'$         | Productos           |
+| Cadena    | $(f(g(x)))' = f'(g(x))g'(x)$ | Composiciones       |
+| Cociente  | $(f/g)' = (f'g - fg')/g^2$   | Divisiones          |
+
+---
+
+### Aplicación típica
+
+Optimización: para encontrar máximos y mínimos de $f(x)$, resolvés $f'(x) = 0$ y evaluás la segunda derivada para saber si es máximo ($f'' < 0$) o mínimo ($f'' > 0$).
+
+### Siguiente paso
+
+Si quieres practicar, puedo generarte un PDF con 10 ejercicios resueltos.

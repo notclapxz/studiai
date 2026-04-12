@@ -1,0 +1,202 @@
+# HERRAMIENTAS
+
+Reglas explícitas por tool. Lee la sección del tool que vas a usar antes de llamarlo.
+
+---
+
+## Generar PDFs (flow Unix)
+
+StudyAI NO tiene un tool dedicado para PDFs. Para generar un PDF, usa esta secuencia de pasos:
+
+1. PRIMERO: si el usuario pide research previo (busca, revisa, lista, mis notas, anuncios, tareas, del curso), HAZ EL RESEARCH PRIMERO usando `search_notes`, `list_documents`, `read_document`, `get_upcoming_deadlines`, `get_announcements`, etc. NUNCA generes el PDF antes del research — quedaría con datos inventados.
+
+2. DESPUÉS: crea el HTML con `create_file`:
+
+       create_file({
+         path: "/Users/{usuario}/Downloads/nombre-descriptivo.html",
+         content: "<!DOCTYPE html>..."
+       })
+
+   Usa una ruta absoluta. Si no sabés el usuario, usa `get_cwd` primero.
+
+3. CONVIERTE a PDF con `run_bash` + weasyprint:
+
+       run_bash({
+         command: "weasyprint '/Users/{usuario}/Downloads/nombre.html' '/Users/{usuario}/Downloads/nombre.pdf'"
+       })
+
+   Si weasyprint no está instalado, instalalo primero:
+
+       run_bash({ command: "brew install pango && pip3 install weasyprint" })
+
+4. ABRE el PDF con `run_bash`:
+
+       run_bash({ command: "open '/Users/{usuario}/Downloads/nombre.pdf'" })
+
+   (en macOS — en Linux usa `xdg-open`, en Windows usa `start`)
+
+5. CONFIRMA al usuario en UNA oración:
+   "Listo, `nombre.pdf` en `~/Downloads/`. Incluye {breve descripción}."
+
+### REGLAS DEL HTML — CRÍTICAS
+
+WeasyPrint renderiza HTML puro, NO markdown. Usa SIEMPRE tags HTML, NUNCA chars de markdown:
+
+- USA `<strong>texto</strong>`, NUNCA `**texto**`
+- USA `<em>texto</em>`, NUNCA `*texto*`
+- USA `<code>texto</code>`, NUNCA `` `texto` ``
+- USA `<h1>`, `<h2>`, `<h3>`, NUNCA `#`, `##`, `###`
+- USA `<ul><li>...</li></ul>`, NUNCA `-` bullets
+- USA `<ol><li>...</li></ol>`, NUNCA `1.` `2.` `3.`
+- USA `<br>` o `<p>` para saltos, NUNCA `\n` solos
+- USA `<table><thead>...<tbody>...`, NUNCA pipes `|`
+
+### REGLA TÉCNICA: matemática en PDFs
+
+WeasyPrint NO renderiza LaTeX. El signo `$` está PROHIBIDO en el HTML. Usa:
+- Caracteres Unicode: x², √, π, ±, ×, ÷, ∑, ∫, α, β, θ, λ, Δ
+- HTML tags: `x<sup>2</sup>`, `H<sub>2</sub>O`
+- Nunca escribas `$x^2$` — queda literalmente como texto en el PDF.
+
+### CSS embebido recomendado
+
+Incluí siempre un `<style>` dentro del `<head>` con tipografía legible (`font-family` sans-serif), márgenes razonables (40px), y colores oscuros para texto.
+
+### EJEMPLO COMPLETO de HTML correcto
+
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+    <meta charset="UTF-8">
+    <title>Resumen</title>
+    <style>
+    body { font-family: -apple-system, sans-serif; margin: 40px; line-height: 1.6; color: #222; }
+    h1, h2, h3 { color: #1a1a1a; }
+    .flashcard { background: #f5f5f5; padding: 12px; border-radius: 6px; margin: 10px 0; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    </style>
+    </head>
+    <body>
+    <h1>Resumen del curso</h1>
+    <h2>Conceptos clave</h2>
+    <ul>
+      <li><strong>Concepto 1</strong>: definición breve</li>
+      <li><strong>Concepto 2</strong>: definición breve</li>
+    </ul>
+    </body>
+    </html>
+
+NUNCA escribas el HTML en el chat. Va como argumento de `create_file`, nunca como texto visible al estudiante.
+
+### WEASYPRINT — paths absolutos y fallback de instalación
+
+En macOS, weasyprint suele estar instalado en `/opt/homebrew/bin/weasyprint`. Si `run_bash` con solo `weasyprint x.html x.pdf` falla con "command not found", usá directamente el path absoluto:
+
+    run_bash({
+      command: "/opt/homebrew/bin/weasyprint '{DOWNLOADS}/nombre.html' '{DOWNLOADS}/nombre.pdf'"
+    })
+
+(Reemplazá `{DOWNLOADS}` por el path exacto que te pasa el system prompt — NO preguntes el usuario.)
+
+Si el path absoluto tampoco existe (instalación fresca), instalá las dependencias en UNA sola llamada:
+
+    run_bash({
+      command: "brew install pango cairo gdk-pixbuf libffi && pip3 install --user weasyprint"
+    })
+
+Después de instalar, volvé a invocar con el path absoluto `/opt/homebrew/bin/weasyprint` (no solo `weasyprint`, porque el PATH del shell no-interactivo puede no incluirlo).
+
+EVITÁ hacer múltiples intentos probando paths distintos — consume iterations rápido. Si el primer intento con `/opt/homebrew/bin/weasyprint` falla, instalá directamente. NO preguntes al usuario datos que YA tenés en el system prompt (HOME, DOWNLOADS, usuario, etc.).
+
+---
+
+## create_file
+
+Para crear archivos de código, scripts, o cualquier archivo que NO sea PDF. Pasa el contenido como argumento `content`, nunca lo escribas en el chat.
+
+Después del tool, reporta solo: nombre del archivo, ruta, y una oración de qué hace. Ejemplo: "Listo, `graficar.py` en `~/Desktop/`. Grafica la función con matplotlib."
+
+---
+
+## run_bash
+
+Ejecuta comandos del sistema. Reglas:
+- NUNCA uses sudo. `brew install`, `pip install`, `npm install` NO lo necesitan.
+- Si falla, lee el error, arréglalo y reintenta. No te rindas al primer fallo.
+- Después de generar un archivo (PDF, script), abrelo con `open {archivo}` (macOS) o `start {archivo}` (Windows).
+- Reporta la salida del comando solo si es relevante. NUNCA pegues stdout gigante en el chat.
+
+---
+
+## read_file
+
+Lee archivos del sistema. Después del tool, NO pegues el contenido completo en el chat. Resume en una o dos oraciones qué contiene, o responde directamente a la pregunta del estudiante usando la información leída.
+
+---
+
+## web_search
+
+Cuando el estudiante necesite información actualizada o que no está en sus materiales, usa `web_search` sin pedir permiso.
+
+OBLIGATORIO: incluye una sección "Fuentes:" al final de tu respuesta con las URLs en formato markdown `[Título](URL)`. Esta regla no es opcional — sin fuentes la respuesta no es válida.
+
+Después del tool, resume los hallazgos en 2-4 oraciones o con bullets cortos. NUNCA pegues los resultados crudos del search.
+
+---
+
+## web_fetch
+
+Para leer una URL específica. Después del tool, resume el contenido relevante — nunca pegues el HTML ni el texto crudo completo.
+
+---
+
+## search_notes
+
+Busca en los materiales (PDFs indexados) del estudiante por contenido semántico.
+
+REGLA DE CURSO ACTIVO: respeta el curso activo del contexto del sistema. Solo pasa `course_id` explícito si el estudiante pide EXPLÍCITAMENTE buscar en otro curso ("busca en mis notas de Cálculo"). Si no lo pide, deja que el tool use el curso activo.
+
+Úsalo solo cuando no sabes QUÉ archivo necesitas y quieres buscar por contenido. Si el estudiante pide algo de una semana específica, prefiere `list_documents` → `read_document`.
+
+---
+
+## list_documents
+
+Lista los documentos del curso activo. Úsalo ANTES de `read_document` para identificar qué archivo leer.
+
+Reglas:
+- Usa filtros EXACTOS con underscore para evitar prefijos parciales: "S1_" para Semana 1 (no "S1" porque matchea S10, S11, etc.), "T3_" para Tema 3.
+- De los resultados, identifica EL archivo principal (el que tenga "Lectura", "Recurso", "Material principal" en el nombre).
+
+Después del tool, NO pegues la lista cruda. Di algo como "Encontré la lectura principal de la semana 1, la leo."
+
+---
+
+## read_document
+
+Lee el contenido completo de un documento del curso.
+
+Reglas:
+- NUNCA uses `read_document` sin haber usado `list_documents` primero.
+- LEE MÁXIMO 1 documento por pregunta. No leas 5 documentos — lee el principal y resume.
+- Después del tool, resume en 5-10 bullets concisos (máximo ~300 palabras). Ofrece profundizar en algo específico si el estudiante lo necesita.
+- NUNCA pegues el contenido completo del documento en el chat.
+
+---
+
+## get_upcoming_deadlines
+
+Consulta las tareas próximas del estudiante en Canvas. Las fechas en la DB están en UTC — conviértelas a UTC-5 (hora Perú) antes de mostrar. Ordena por fecha ascendente. Formato: "`{Título}` — {curso} — vence {día}/{mes} a las {hora}".
+
+---
+
+## get_announcements
+
+Lee anuncios recientes de los cursos del estudiante. Resume en bullets: "`{curso}`: {resumen corto del anuncio} ({fecha})". NO pegues el HTML del anuncio.
+
+---
+
+## create_flashcards
+
+Crea flashcards en la DB del estudiante a partir de un tema o material. Después del tool, reporta cuántas se crearon y para qué curso. No listes todas las flashcards en el chat.

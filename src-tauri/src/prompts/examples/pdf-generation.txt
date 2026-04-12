@@ -1,0 +1,60 @@
+# EJEMPLO — Generación de PDF con research previo (flow Unix)
+
+USUARIO: "Hazme un PDF con un resumen de mis notas del curso de mate, incluyendo las tareas pendientes"
+
+## CORRECTO — research PRIMERO, después create_file, después convertir
+
+[paso 1: research]
+
+    search_notes({ query: "matemática conceptos clave", course_id: 123 })
+    list_documents({ course_id: 123 })
+    read_document({ id: 456 })
+    get_upcoming_deadlines({ course_id: 123 })
+
+[paso 2: con la info real, crear HTML con create_file]
+
+    create_file({
+      path: "/Users/usuario/Downloads/resumen-matematica.html",
+      content: "<!DOCTYPE html><html><head><meta charset='UTF-8'><style>body{font-family:sans-serif;margin:40px;line-height:1.6}h1{color:#222}ul{padding-left:20px}.task{background:#f5f5f5;padding:8px;margin:6px 0}</style></head><body><h1>Resumen de Matemática</h1><h2>Conceptos clave</h2><ul><li><strong>Derivadas</strong>: tasa de cambio instantánea</li><li><strong>Integrales</strong>: área bajo la curva</li></ul><h2>Tareas pendientes</h2><div class='task'><strong>Tarea 1</strong> — vence 12/04</div></body></html>"
+    })
+
+[paso 3: convertir a PDF]
+
+    run_bash({ command: "weasyprint '/Users/usuario/Downloads/resumen-matematica.html' '/Users/usuario/Downloads/resumen-matematica.pdf'" })
+
+[paso 4: abrir]
+
+    run_bash({ command: "open '/Users/usuario/Downloads/resumen-matematica.pdf'" })
+
+[paso 5: confirmar al usuario]
+
+"Listo, `resumen-matematica.pdf` en `~/Downloads/`. Incluye los conceptos clave de derivadas e integrales más tus tareas pendientes."
+
+## INCORRECTO #1 — generar PDF antes del research
+
+[paso 1 INCORRECTO: salta el research]
+
+    create_file({
+      path: "...",
+      content: "<!DOCTYPE html>...<h1>Matemática</h1><p>Algunos conceptos generales...</p>"
+    })
+
+MAL. El HTML quedó con info GENÉRICA inventada, no con tus notas reales. SIEMPRE research primero.
+
+## INCORRECTO #2 — narrar el HTML en el chat
+
+"Voy a crear el PDF. Contenido del PDF:
+
+    <!DOCTYPE html>
+    <html>
+    ..."
+
+MAL. NUNCA pegues el HTML en el chat. Va como argumento de `create_file`.
+
+## INCORRECTO #3 — usar markdown en el HTML
+
+    create_file({
+      content: "<!DOCTYPE html><body># Resumen\n- **Concepto 1**: ...\n- **Concepto 2**: ..."
+    })
+
+MAL. WeasyPrint no renderiza markdown. Usa `<h1>`, `<ul><li>`, `<strong>` etc. Los `#` y `**` aparecen literales en el PDF.

@@ -19,6 +19,9 @@
     "deep-link:allow-register",
     "deep-link:allow-unregister",
     "opener:allow-open-url",
-    "opener:allow-open-path"
+    "opener:allow-open-path",
+    "updater:default",
+    "updater:allow-check",
+    "updater:allow-download-and-install"
   ]
 }

@@ -4643,6 +4643,8 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         // Plugin Deep Link — intercepta studiai://auth/callback del OAuth de Google
         .plugin(tauri_plugin_deep_link::init())
+        // Plugin Updater — auto-update con firma criptográfica
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // Plugin SQL — SQLite con migraciones automáticas al iniciar
         .plugin(
             tauri_plugin_sql::Builder::default()

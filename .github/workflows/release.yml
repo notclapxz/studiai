@@ -83,30 +83,52 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }}
 
-      - name: Upload sig artifacts
+      - name: Upload .sig artifacts
+        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
+        shell: bash
+        run: |
+          SIG=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos -name "*.tar.gz.sig" 2>/dev/null | head -1)
+          if [ -n "$SIG" ]; then
+            echo "Found sig: $SIG"
+            cp "$SIG" /tmp/mac_arm.sig
+          else
+            echo "No sig found, creating empty"
+            echo "" > /tmp/mac_arm.sig
+          fi
+
+      - name: Save mac sig as artifact
         if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
         uses: actions/upload-artifact@v4
         with:
           name: mac-arm-sig
-          path: src-tauri/target/aarch64-apple-darwin/release/bundle/macos/studyai.app.tar.gz.sig
+          path: /tmp/mac_arm.sig
           retention-days: 1
-          if-no-files-found: warn
 
-      - name: Upload windows sig artifact
+      - name: Upload windows .sig artifact
+        if: matrix.os == 'windows-latest'
+        shell: bash
+        run: |
+          SIG=$(find src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis -name "*.sig" 2>/dev/null | head -1)
+          if [ -n "$SIG" ]; then
+            echo "Found sig: $SIG"
+            cp "$SIG" /tmp/win.sig
+          else
+            echo "No sig found"
+            echo "" > /tmp/win.sig
+          fi
+
+      - name: Save win sig as artifact
         if: matrix.os == 'windows-latest'
         uses: actions/upload-artifact@v4
         with:
           name: win-sig
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.nsis.zip.sig
+          path: /tmp/win.sig
           retention-days: 1
-          if-no-files-found: warn
 
   publish-update-manifest:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - name: Download mac sig
         uses: actions/download-artifact@v4
         with:
@@ -121,7 +143,7 @@ jobs:
           path: /tmp/sigs/win/
         continue-on-error: true
 
-      - name: Generate latest.json
+      - name: Generate and upload latest.json
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -129,8 +151,11 @@ jobs:
           VERSION=${GITHUB_REF_NAME#v}
           TAG=${GITHUB_REF_NAME}
 
-          MAC_ARM_SIG=$(cat /tmp/sigs/mac/*.sig 2>/dev/null | head -1 || echo "")
-          WIN_SIG=$(cat /tmp/sigs/win/*.sig 2>/dev/null | head -1 || echo "")
+          MAC_ARM_SIG=$(cat /tmp/sigs/mac/mac_arm.sig 2>/dev/null | tr -d '\n' || echo "")
+          WIN_SIG=$(cat /tmp/sigs/win/win.sig 2>/dev/null | tr -d '\n' || echo "")
+
+          echo "MAC_ARM_SIG length: ${#MAC_ARM_SIG}"
+          echo "WIN_SIG length: ${#WIN_SIG}"
 
           cat > latest.json << ENDJSON
           {
@@ -154,4 +179,5 @@ jobs:
           }
           ENDJSON
 
+          cat latest.json
           gh release upload ${TAG} latest.json --clobber

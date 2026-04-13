@@ -83,130 +83,69 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }}
 
-      - name: Debug signing key
-        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
-        shell: bash
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "TAURI_SIGNING_PRIVATE_KEY is SET (length: ${#TAURI_SIGNING_PRIVATE_KEY})"
-          else
-            echo "ERROR: TAURI_SIGNING_PRIVATE_KEY is EMPTY"
-          fi
-          if [ -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ]; then
-            echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD is SET"
-          else
-            echo "ERROR: TAURI_SIGNING_PRIVATE_KEY_PASSWORD is EMPTY"
-          fi
-          # Test signing directly
-          echo "test" | base64 | TAURI_SIGNING_PRIVATE_KEY="$TAURI_SIGNING_PRIVATE_KEY" TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$TAURI_SIGNING_PRIVATE_KEY_PASSWORD" ./node_modules/.bin/tauri signer sign /dev/stdin 2>&1 || echo "Direct sign test failed (expected in CI)"
-
-      - name: Upload .sig artifacts
-        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
-        shell: bash
-        run: |
-          echo "=== All files in bundle ==="
-          find src-tauri/target/aarch64-apple-darwin/release/bundle -type f 2>/dev/null | sort || echo "Bundle dir not found"
-          
-          SIG=$(find src-tauri/target -name "*.sig" 2>/dev/null | head -1)
-          if [ -n "$SIG" ]; then
-            echo "Found sig: $SIG"
-            cp "$SIG" /tmp/mac_arm.sig
-          else
-            echo "WARNING: No .sig file found — signing may have failed"
-            touch /tmp/mac_arm.sig
-          fi
-
-      - name: Save mac sig as artifact
-        if: matrix.os == 'macos-latest' && matrix.target == 'aarch64-apple-darwin'
-        uses: actions/upload-artifact@v4
-        with:
-          name: mac-arm-sig
-          path: /tmp/mac_arm.sig
-          retention-days: 1
-
-      - name: Upload windows .sig artifact
-        if: matrix.os == 'windows-latest'
-        shell: bash
-        run: |
-          echo "=== Searching for .sig files on Windows ==="
-          find src-tauri/target -name "*.sig" 2>/dev/null || echo "No .sig files found"
-          
-          SIG=$(find src-tauri/target -name "*.sig" 2>/dev/null | head -1)
-          if [ -n "$SIG" ]; then
-            echo "Found sig: $SIG"
-            cp "$SIG" /tmp/win.sig
-          else
-            echo "WARNING: No .sig file found on Windows"
-            touch /tmp/win.sig
-          fi
-
-      - name: Save win sig as artifact
-        if: matrix.os == 'windows-latest'
-        uses: actions/upload-artifact@v4
-        with:
-          name: win-sig
-          path: /tmp/win.sig
-          retention-days: 1
-          if-no-files-found: warn
-
   publish-update-manifest:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download mac sig
-        uses: actions/download-artifact@v4
-        with:
-          name: mac-arm-sig
-          path: /tmp/sigs/mac/
-        continue-on-error: true
-
-      - name: Download win sig
-        uses: actions/download-artifact@v4
-        with:
-          name: win-sig
-          path: /tmp/sigs/win/
-        continue-on-error: true
-
       - name: Generate and upload latest.json
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=${GITHUB_REF_NAME#v}
           TAG=${GITHUB_REF_NAME}
+          VERSION=${TAG#v}
 
-          MAC_ARM_SIG=$(cat /tmp/sigs/mac/mac_arm.sig 2>/dev/null | tr -d '\n' || echo "")
-          WIN_SIG=$(cat /tmp/sigs/win/win.sig 2>/dev/null | tr -d '\n' || echo "")
+          # La versión en los nombres de archivo viene de tauri.conf.json, no del tag
+          TAURI_VERSION=$(python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
+          echo "Tag: ${TAG} | Version manifest: ${VERSION} | Tauri file version: ${TAURI_VERSION}"
+
+          # Descargar .sig files del release (generados por tauri-action)
+          mkdir -p /tmp/sigs
+          gh release download ${TAG} --pattern "*.sig" --dir /tmp/sigs
+          ls -la /tmp/sigs/
+
+          # macOS: tauri-action nombra sin versión en el .app.tar.gz
+          MAC_ARM_SIG=$(cat "/tmp/sigs/studyai_aarch64.app.tar.gz.sig" 2>/dev/null | tr -d '\n' || echo "")
+          MAC_X64_SIG=$(cat "/tmp/sigs/studyai_x64.app.tar.gz.sig" 2>/dev/null | tr -d '\n' || echo "")
+
+          # Windows: tauri-action incluye la versión de tauri.conf.json en el nombre
+          WIN_SIG=$(cat "/tmp/sigs/studyai_${TAURI_VERSION}_x64-setup.exe.sig" 2>/dev/null | tr -d '\n' || echo "")
+          WIN_MSI_SIG=$(cat "/tmp/sigs/studyai_${TAURI_VERSION}_x64_en-US.msi.sig" 2>/dev/null | tr -d '\n' || echo "")
+          [ -z "$WIN_SIG" ] && WIN_SIG="$WIN_MSI_SIG"
 
           echo "MAC_ARM_SIG length: ${#MAC_ARM_SIG}"
+          echo "MAC_X64_SIG length: ${#MAC_X64_SIG}"
           echo "WIN_SIG length: ${#WIN_SIG}"
 
-          cat > latest.json << ENDJSON
-          {
-            "version": "${VERSION}",
-            "notes": "Nueva versión de StudiAI disponible.",
-            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-            "platforms": {
-              "darwin-aarch64": {
-                "url": "https://github.com/notclapxz/studiai/releases/download/${TAG}/studyai_aarch64.app.tar.gz",
-                "signature": "${MAC_ARM_SIG}"
-              },
-              "darwin-x86_64": {
-                "url": "https://github.com/notclapxz/studiai/releases/download/${TAG}/studyai_x64.app.tar.gz",
-                "signature": ""
-              },
-              "windows-x86_64": {
-                "url": "https://github.com/notclapxz/studiai/releases/download/${TAG}/studyai_${VERSION}_x64-setup.exe",
-                "signature": "${WIN_SIG}"
+          jq -n \
+            --arg version "$VERSION" \
+            --arg pub_date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg mac_arm_sig "$MAC_ARM_SIG" \
+            --arg mac_x64_sig "$MAC_X64_SIG" \
+            --arg win_sig "$WIN_SIG" \
+            --arg tag "$TAG" \
+            --arg tv "$TAURI_VERSION" \
+            '{
+              version: $version,
+              notes: "Nueva versión de StudiAI disponible.",
+              pub_date: $pub_date,
+              platforms: {
+                "darwin-aarch64": {
+                  url: ("https://github.com/notclapxz/studiai/releases/download/" + $tag + "/studyai_aarch64.app.tar.gz"),
+                  signature: $mac_arm_sig
+                },
+                "darwin-x86_64": {
+                  url: ("https://github.com/notclapxz/studiai/releases/download/" + $tag + "/studyai_x64.app.tar.gz"),
+                  signature: $mac_x64_sig
+                },
+                "windows-x86_64": {
+                  url: ("https://github.com/notclapxz/studiai/releases/download/" + $tag + "/studyai_" + $tv + "_x64-setup.exe"),
+                  signature: $win_sig
+                }
               }
-            }
-          }
-          ENDJSON
+            }' > latest.json
 
           cat latest.json
           gh release upload ${TAG} latest.json --clobber

@@ -13,10 +13,12 @@ import { Paywall } from "./pages/Paywall";
 import { supabase } from "./lib/supabase";
 import { useAuthStore } from "./store/authStore";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import Database from "@tauri-apps/plugin-sql";
 import { AlertTriangle } from "lucide-react";
 import { checkForUpdates } from "./lib/updater";
 import { useToasts, ToastContainer } from "./components/Toast";
+import { ChangelogModal } from "./components/ChangelogModal";
 import "./App.css";
 
 // ─── Tipos auxiliares ─────────────────────────────────────────────────────────
@@ -51,7 +53,7 @@ async function shouldShowOnboarding(): Promise<boolean> {
     }
 
     return true; // Nuevo usuario, mostrar onboarding
-  } catch (err) {
+  } catch (err: unknown) {
     console.error("[Onboarding] Error verificando estado:", err);
     return false; // Ante error, no bloquear al usuario
   }
@@ -130,7 +132,7 @@ async function ensureUserExists(
       if (result?.license) {
         useAuthStore.getState().setLicenseFromRpc(result.license);
       }
-    } catch (err) {
+    } catch (err: unknown) {
       console.error("[Auth] Excepcion en ensureUserExists:", err);
     }
   })();
@@ -173,13 +175,12 @@ function parseAuthTokensFromUrl(url: string): {
 
 // ─── Componente: Banner de advertencia de trial ──────────────────────────────
 
-function TrialWarningBanner({
-  daysRemaining,
-  onVerPlanes,
-}: {
+interface TrialWarningBannerProps {
   daysRemaining: number;
   onVerPlanes: () => void;
-}) {
+}
+
+function TrialWarningBanner({ daysRemaining, onVerPlanes }: TrialWarningBannerProps) {
   return (
     <div
       className="flex items-center justify-between px-4 py-2 text-sm shrink-0"
@@ -227,13 +228,12 @@ function TrialWarningBanner({
 // siguen funcionando. El chat con IA se bloquea aparte en ChatPanel cuando el
 // status es "unknown".
 
-function LicenseOfflineBanner({
-  licenseVerifiedAt,
-  onReintentar,
-}: {
+interface LicenseOfflineBannerProps {
   licenseVerifiedAt: number | null;
   onReintentar: () => void;
-}) {
+}
+
+function LicenseOfflineBanner({ licenseVerifiedAt, onReintentar }: LicenseOfflineBannerProps) {
   // Dias desde la ultima verificacion exitosa online (si hay).
   let mensaje = "Sin conexion — no pudimos verificar tu licencia.";
   if (licenseVerifiedAt !== null) {
@@ -281,7 +281,7 @@ function LicenseOfflineBanner({
 
 // ─── Componente ──────────────────────────────────────────────────────────────
 
-function App() {
+export function App() {
   const {
     user,
     loading,
@@ -295,6 +295,12 @@ function App() {
   } = useAuthStore();
   const [appState, setAppState] = useState<AppState>("login");
   const { toasts, addToast, dismissToast } = useToasts();
+
+  // ── Estado: ChangelogModal ────────────────────────────────────────────────
+  // showChangelog: true → modal visible automáticamente (nueva versión detectada)
+  // changelogSkipVersionUpdate: true → abierto manualmente desde Settings (no re-escribe last_seen_version)
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [changelogSkipVersionUpdate, setChangelogSkipVersionUpdate] = useState(false);
 
   // ── Efecto: chequear actualizaciones al montar (una sola vez) ────────────
 
@@ -310,7 +316,7 @@ function App() {
         .then(() => {
           // relaunch() ya fue llamado dentro de onInstall — nunca llega aqui
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
           console.error("[Updater] Error instalando update:", err);
           addToast({
             variant: "error",
@@ -405,7 +411,7 @@ function App() {
             setAppState(showOnboarding ? "onboarding" : "main");
           }
         }
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("[Auth] Error en verificacion inicial:", err);
       } finally {
         setLoading(false);
@@ -457,7 +463,7 @@ function App() {
 
           cleanupFn = unlisten;
           console.log("[Auth] Deep link listener activo (fallback event)");
-        } catch (err) {
+        } catch (err: unknown) {
           console.warn(
             "[Auth] No se pudo configurar el deep link listener:",
             err
@@ -492,7 +498,7 @@ function App() {
         if (data.user) {
           console.log("[Auth] Sesion establecida para:", data.user.email);
         }
-      } catch (err) {
+      } catch (err: unknown) {
         console.error("[Auth] Error procesando callback de auth:", err);
       }
     }
@@ -551,6 +557,42 @@ function App() {
   }, [checkLicense]);
 
   // ── Handlers de navegacion ───────────────────────────────────
+
+  // ── Efecto: detectar nueva versión y mostrar ChangelogModal ──────────────
+  // Guard: solo ejecutar cuando el usuario está autenticado y terminó el onboarding
+  // (appState === "main" es el proxy correcto — se llega ahí solo si ambas condiciones se cumplen)
+  useEffect(() => {
+    if (appState !== "main" || !user) return;
+
+    async function checkVersionChangelog() {
+      try {
+        const [currentVersion, lastSeenVersion] = await Promise.all([
+          getVersion(),
+          invoke<string | null>("get_setting", { key: "last_seen_version" }),
+        ]);
+
+        if (currentVersion !== lastSeenVersion) {
+          setChangelogSkipVersionUpdate(false);
+          setShowChangelog(true);
+        }
+      } catch (err: unknown) {
+        // Fallo no crítico — no bloquear la app si no se puede comparar versiones
+        console.warn("[Changelog] Error comparando versiones:", err);
+      }
+    }
+
+    void checkVersionChangelog();
+  }, [appState, user]);
+
+  // ── Efecto: verificar deadlines próximos al entrar al layout principal ──
+  useEffect(() => {
+    if (appState !== "main" || !user) return;
+
+    // Lanzar sin await — las notificaciones son best-effort
+    invoke("check_upcoming_deadlines").catch((err: unknown) => {
+      console.warn("[Deadlines] Error verificando deadlines:", err);
+    });
+  }, [appState, user]);
 
   /** Contador que fuerza remount de MainLayout */
   const [mainLayoutKey, setMainLayoutKey] = useState(0);
@@ -663,6 +705,20 @@ function App() {
   const showOfflineBanner =
     licenseStatus === "unknown" || licenseFromCache;
 
+  /** Abre el ChangelogModal en modo manual (sin actualizar last_seen_version al cerrar) */
+  function handleOpenChangelogManual() {
+    setChangelogSkipVersionUpdate(true);
+    setShowChangelog(true);
+  }
+
+  /** Fragmento compartido: ChangelogModal flotante sobre cualquier variante del layout */
+  const changelogOverlay = showChangelog && (
+    <ChangelogModal
+      skipVersionUpdate={changelogSkipVersionUpdate}
+      onClose={() => setShowChangelog(false)}
+    />
+  );
+
   if (showOfflineBanner) {
     return (
       <div className="flex flex-col h-screen">
@@ -673,9 +729,10 @@ function App() {
           }}
         />
         <div className="flex-1 min-h-0 [&>div]:!h-full">
-          <MainLayout key={mainLayoutKey} />
+          <MainLayout key={mainLayoutKey} onOpenChangelog={handleOpenChangelogManual} onForceOnboarding={() => setAppState("onboarding")} />
         </div>
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+        {changelogOverlay}
       </div>
     );
   }
@@ -689,17 +746,19 @@ function App() {
         />
         {/* flex-1 min-h-0 overrides MainLayout's h-screen */}
         <div className="flex-1 min-h-0 [&>div]:!h-full">
-          <MainLayout key={mainLayoutKey} />
+          <MainLayout key={mainLayoutKey} onOpenChangelog={handleOpenChangelogManual} onForceOnboarding={() => setAppState("onboarding")} />
         </div>
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+        {changelogOverlay}
       </div>
     );
   }
 
   return (
     <>
-      <MainLayout key={mainLayoutKey} />
+      <MainLayout key={mainLayoutKey} onOpenChangelog={handleOpenChangelogManual} onForceOnboarding={() => setAppState("onboarding")} />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      {changelogOverlay}
     </>
   );
 }

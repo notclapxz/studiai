@@ -6,42 +6,7 @@ import { Lock, Clock, Sparkles, ArrowRight, CheckCircle, Loader2 } from "lucide-
 import { useAuthStore } from "../store/authStore";
 import { useToasts, ToastContainer } from "../components/Toast";
 
-// ─── Window type declarations para Culqi v4 ──────────────────────────────────
-
-interface CulqiToken {
-  id: string;
-  email?: string;
-  [key: string]: unknown;
-}
-
-interface CulqiError {
-  user_message?: string;
-  merchant_message?: string;
-  [key: string]: unknown;
-}
-
-interface CulqiCheckout {
-  open: () => void;
-  close: () => void;
-  settings: (options: {
-    title: string;
-    currency: string;
-    description: string;
-    amount: number;
-    order?: string;
-  }) => void;
-  publicKey: string;
-  token: CulqiToken | null;
-  error: CulqiError | null;
-  getOrder?: () => CulqiToken | null;
-}
-
-declare global {
-  interface Window {
-    Culqi: CulqiCheckout;
-    culqi: () => void;
-  }
-}
+// Window types for Culqi are declared globally in src/types/culqi.d.ts
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 

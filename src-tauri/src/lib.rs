@@ -28,13 +28,16 @@ extern crate pdf_extract;
 const GEMINI_API_KEY: &str = env!("GEMINI_API_KEY");
 
 // ─── Prompts modulares (cargados en compile-time) ────────────────────────────
-// Secciones ordenadas 01..06 — se concatenan en ese orden en build_system_prompt()
+// Secciones ordenadas 01..07 — se concatenan en ese orden en build_system_prompt()
 const PROMPT_BASE: &str = include_str!("prompts/sections/01-base.txt");
 const PROMPT_COMPORTAMIENTO: &str = include_str!("prompts/sections/02-comportamiento.txt");
 const PROMPT_CAPACIDADES: &str = include_str!("prompts/sections/03-capacidades.txt");
 const PROMPT_HERRAMIENTAS: &str = include_str!("prompts/sections/04-herramientas.txt");
 const PROMPT_FORMATO: &str = include_str!("prompts/sections/05-formato.txt");
 const PROMPT_ESTILO: &str = include_str!("prompts/sections/06-estilo.txt");
+// Reglas pedagógicas: tareas (completar + ofrecer), comprensión (cambiar enfoque), modo examen
+// Spec: sdd/prompts-coach — topic_key sdd/prompts-coach/spec
+const PROMPT_COACHING: &str = include_str!("prompts/sections/07-coaching.txt");
 
 // Few-shot examples (se concatenan al final del system prompt)
 const EXAMPLE_PDF_GENERATION: &str = include_str!("prompts/examples/pdf-generation.txt");
@@ -47,10 +50,23 @@ const EXAMPLE_FORMAT_HIERARCHY: &str = include_str!("prompts/examples/format-hie
 // builder del toolConfig de Gemini (para promover `mode: "ANY"` cuando el
 // mensaje del usuario implica obviamente un tool específico).
 
+/// Intents detectados por keyword matching en el mensaje del usuario.
+/// Orden de evaluación: WebSearch → ExamPrep → TaskHelp → Motivation → ConceptLearn → Conversational
+/// Spec: sdd/prompts-coach/spec — Domain 3
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MessageIntent {
+    /// Fallback — sin keywords reconocidos
     Conversational,
-    WebSearch, // single-shot search → ANY mode para web_search tool
+    /// Búsqueda web: "busca en internet", "googlea", etc.
+    WebSearch,
+    /// Tarea académica: "hazme", "resolvé", "completá", etc.
+    TaskHelp,
+    /// Preparación para examen: "modo examen", "quiz", etc.
+    ExamPrep,
+    /// Aprendizaje de conceptos: "explicame", "qué es", etc.
+    ConceptLearn,
+    /// Motivación / bloqueo emocional: "no puedo", "me rindo", etc.
+    Motivation,
 }
 
 #[derive(Debug, Clone)]
@@ -67,35 +83,90 @@ struct RuntimeContext {
     user_message_intent: MessageIntent,
 }
 
-/// Detecta el intent del mensaje del usuario a partir de keywords en español.
-/// Usado para promover `toolConfig.mode = "ANY"` SOLO en turnos donde un tool
-/// single-shot es obviamente necesario (actualmente: web_search).
+/// Detecta el intent del mensaje del usuario por keyword matching en español.
 ///
-/// NOTA (pdf-flow-fix 2026-04-10): PDF generation y file creation ya NO fuerzan
-/// ANY mode. El flow Unix (create_file + run_bash weasyprint) requiere que el
-/// modelo pueda hacer research primero con AUTO mode. Forzar ANY causaba que
-/// Gemini generara PDFs con datos inventados antes del research.
+/// Orden de evaluación (spec sdd/prompts-coach/spec — Domain 3):
+///   WebSearch → ExamPrep → TaskHelp → Motivation → ConceptLearn → Conversational
+///
+/// La normalización a lowercase ocurre primero para que variantes como
+/// "MODO EXAMEN" o "Hazme" sean reconocidas correctamente.
+///
+/// El resultado se usa para dos fines:
+///   1. `build_tool_config()` — promover mode="ANY" para WebSearch
+///   2. `build_system_prompt()` — inyectar mini-prompt pedagógico por intent
 fn detect_intent(user_message: &str) -> MessageIntent {
     let msg = user_message.to_lowercase();
 
-    // Web search keywords (español)
+    // 1. WebSearch — búsqueda explícita en internet
     const WEB_KEYWORDS: &[&str] = &[
         "busca en internet", "busca en la web", "search online",
-        "noticias", "última información",
+        "googlea", "investiga en internet", "busca", "buscar",
+        "noticias", "última información", "search",
     ];
     if WEB_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
         return MessageIntent::WebSearch;
     }
 
+    // 2. ExamPrep — modo examen o preparación para prueba
+    const EXAM_KEYWORDS: &[&str] = &[
+        "modo examen", "examen mode", "prepárame para el examen",
+        "prepárame para examen", "quiero repasar", "tengo examen",
+        "practicar para", "preparar examen", "quiz", "pruébame",
+        "parcial", "repaso de",
+    ];
+    if EXAM_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
+        return MessageIntent::ExamPrep;
+    }
+
+    // 3. TaskHelp — el estudiante pide que se complete una tarea
+    const TASK_KEYWORDS: &[&str] = &[
+        "hazme", "haceme", "hacé", "haz ", "haz\t",
+        "escríbeme", "escribime", "resolvé", "resuelve", "resolver",
+        "completá", "completa", "dame ", "dame\t",
+        "necesito que", "necesito que hagas", "ayúdame con",
+        "tengo que entregar", "no entiendo el enunciado",
+    ];
+    if TASK_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
+        return MessageIntent::TaskHelp;
+    }
+
+    // 4. Motivation — bloqueo emocional o frustración
+    const MOTIVATION_KEYWORDS: &[&str] = &[
+        "motivación", "motivacion", "no puedo", "me rindo",
+        "estoy agotado", "ayúdame a motivarme", "no entiendo nada",
+        "me voy a jalar", "estoy perdido", "estoy mal",
+    ];
+    if MOTIVATION_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
+        return MessageIntent::Motivation;
+    }
+
+    // 5. ConceptLearn — quiere entender o aprender un concepto
+    const CONCEPT_KEYWORDS: &[&str] = &[
+        "explícame", "explicame", "explicá", "explica",
+        "qué es", "que es", "cómo funciona", "como funciona",
+        "define", "qué significa", "que significa",
+        "entender", "aprendo",
+    ];
+    if CONCEPT_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
+        return MessageIntent::ConceptLearn;
+    }
+
+    // 6. Conversational — fallback
     MessageIntent::Conversational
 }
 
-/// Ensambla el system prompt final a partir de las 6 secciones + ejemplos
-/// few-shot + contexto runtime (fecha, OS, curso activo).
+/// Ensambla el system prompt final a partir de las 7 secciones + ejemplos
+/// few-shot + contexto runtime (fecha, OS, curso activo) + mini-prompt por intent.
+///
+/// El intent ya viene resuelto en `ctx.user_message_intent` (calculado en
+/// `send_chat_message()` antes de construir el prompt). Inyectamos un bloque
+/// breve (max 3 líneas) según el tipo de consulta detectado. No se agrega
+/// bloque extra para `Conversational` para evitar overhead innecesario.
+/// Spec: sdd/prompts-coach/spec — Domain 4
 fn build_system_prompt(ctx: &RuntimeContext) -> String {
     let mut out = String::with_capacity(16 * 1024);
 
-    // 1. Secciones principales en orden
+    // 1. Secciones principales en orden (01–07)
     out.push_str(PROMPT_BASE);
     out.push_str("\n\n");
     out.push_str(PROMPT_COMPORTAMIENTO);
@@ -107,6 +178,8 @@ fn build_system_prompt(ctx: &RuntimeContext) -> String {
     out.push_str(PROMPT_FORMATO);
     out.push_str("\n\n");
     out.push_str(PROMPT_ESTILO);
+    out.push_str("\n\n");
+    out.push_str(PROMPT_COACHING);
 
     // 2. Few-shot examples
     out.push_str("\n\n---\n\n# EJEMPLOS FEW-SHOT\n\n");
@@ -130,6 +203,33 @@ fn build_system_prompt(ctx: &RuntimeContext) -> String {
     if let Some(course_ctx) = &ctx.course_context {
         out.push_str("\n## Curso activo\n\n");
         out.push_str(course_ctx);
+    }
+
+    // 4. Mini-prompt pedagógico según intent detectado en este turno
+    // Conversational no agrega bloque extra — sin overhead innecesario
+    let mini_prompt = match ctx.user_message_intent {
+        MessageIntent::WebSearch => Some(
+            "El usuario quiere que busques información. Proporciona datos actuales y cita fuentes si es posible."
+        ),
+        MessageIntent::ExamPrep => Some(
+            "Estás en modo examen. Solo hacé preguntas. No des respuestas directas. Evaluá cada respuesta del estudiante brevemente antes de continuar."
+        ),
+        MessageIntent::TaskHelp => Some(
+            "El estudiante necesita ayuda con una tarea. Completá la tarea sin negarte. Al terminar, ofrecé una vez enseñar cómo lo hiciste."
+        ),
+        MessageIntent::Motivation => Some(
+            "El estudiante está frustrado. Validá brevemente (sin dramatizar) y redirigí hacia una acción concreta."
+        ),
+        MessageIntent::ConceptLearn => Some(
+            "El estudiante quiere aprender un concepto. Explicá con claridad y, si no entiende, cambiá el enfoque completamente."
+        ),
+        MessageIntent::Conversational => None,
+    };
+
+    if let Some(block) = mini_prompt {
+        out.push_str("\n\n---\n\n# CONTEXTO DE ESTA CONSULTA\n\n");
+        out.push_str(block);
+        out.push('\n');
     }
 
     out
@@ -166,6 +266,7 @@ struct FunctionCallingConfig {
 /// Construye el `toolConfig` para Gemini según el intent detectado.
 /// Retorna `None` cuando el modo es AUTO (el campo se omite entonces del body
 /// del request, preservando la semántica default de Gemini).
+/// Solo WebSearch promueve ANY mode — el resto usa AUTO para máxima flexibilidad.
 fn build_tool_config(intent: MessageIntent) -> Option<ToolConfig> {
     match intent {
         MessageIntent::WebSearch => Some(ToolConfig {
@@ -174,7 +275,12 @@ fn build_tool_config(intent: MessageIntent) -> Option<ToolConfig> {
                 allowed_function_names: Some(vec!["web_search".to_string()]),
             },
         }),
-        MessageIntent::Conversational => None,
+        // Todos los demás intents usan AUTO mode (None = campo omitido en request)
+        MessageIntent::Conversational
+        | MessageIntent::TaskHelp
+        | MessageIntent::ExamPrep
+        | MessageIntent::ConceptLearn
+        | MessageIntent::Motivation => None,
     }
 }
 
@@ -4088,6 +4194,39 @@ async fn agentic_loop(
     Ok(())
 }
 
+/// Lee un valor de la tabla `settings` por clave.
+/// Retorna `None` si la clave no existe o si la tabla aún no está inicializada.
+/// Usado por el frontend para leer flags de onboarding, versiones vistas, etc.
+#[tauri::command]
+fn get_setting(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {
+    let conn = open_db(&app)?;
+    let result: rusqlite::Result<String> = conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        rusqlite::params![key],
+        |row| row.get(0),
+    );
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(format!("Error leyendo setting '{key}': {e}")),
+    }
+}
+
+/// Escribe (upsert) un valor en la tabla `settings`.
+/// Si la clave ya existe, actualiza el valor; si no, inserta una fila nueva.
+/// Usado por el frontend para persistir flags de onboarding, versiones, changelogs, etc.
+#[tauri::command]
+fn set_setting(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
+    let conn = open_db(&app)?;
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        rusqlite::params![key, value],
+    )
+    .map_err(|e| format!("Error escribiendo setting '{key}': {e}"))?;
+    Ok(())
+}
+
 /// Genera un resumen automático de una sesión de estudio usando Gemini.
 /// Se llama al cambiar de sesión o cerrar la app (fire-and-forget desde el frontend).
 #[tauri::command]
@@ -4328,7 +4467,6 @@ async fn send_chat_message(
         .map(|m| m.content.as_str())
         .unwrap_or("");
     let intent = detect_intent(last_user_text);
-    eprintln!("[chat] Detected intent: {:?}", intent);
 
     let home_dir = std::env::var("HOME").unwrap_or_else(|_| "/Users".to_string());
     let downloads_dir = format!("{}/Downloads", home_dir);
@@ -4634,6 +4772,99 @@ async fn open_or_download_file(
     Ok(dest_str)
 }
 
+/// Verifica assignments de Canvas con due_at próximo y envía notificaciones nativas.
+/// - Solo notifica si `deadline_notifications_enabled` = "true" en settings.
+/// - El lookahead en horas se lee de `deadline_lookahead_hours` (default 24h).
+/// - Marca `notified = 1` en la fila para evitar notificaciones repetidas.
+/// - Retorna la cantidad de notificaciones enviadas.
+#[tauri::command]
+fn check_upcoming_deadlines(app: tauri::AppHandle) -> Result<u32, String> {
+    use tauri_plugin_notification::NotificationExt;
+
+    let conn = open_db(&app)?;
+
+    // Leer si las notificaciones están habilitadas
+    let enabled: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'deadline_notifications_enabled'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|_| "true".to_string());
+
+    if enabled != "true" {
+        return Ok(0);
+    }
+
+    // Leer lookahead en horas
+    let lookahead_hours: i64 = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'deadline_lookahead_hours'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_else(|_| "24".to_string())
+        .parse()
+        .unwrap_or(24);
+
+    // Buscar assignments no notificados con due_at dentro del lookahead
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, title, due_at FROM assignments
+             WHERE due_at IS NOT NULL
+               AND notified = 0
+               AND deleted_at IS NULL
+               AND datetime(due_at) > datetime('now')
+               AND datetime(due_at) <= datetime('now', ?1)",
+        )
+        .map_err(|e| format!("Error preparando query de deadlines: {e}"))?;
+
+    let lookahead_param = format!("+{} hours", lookahead_hours);
+
+    struct AssignmentRow {
+        id: i64,
+        title: String,
+        due_at: String,
+    }
+
+    let rows: Vec<AssignmentRow> = stmt
+        .query_map(rusqlite::params![lookahead_param], |row| {
+            Ok(AssignmentRow {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                due_at: row.get(2)?,
+            })
+        })
+        .map_err(|e| format!("Error ejecutando query de deadlines: {e}"))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut sent: u32 = 0;
+
+    for assignment in &rows {
+        // Formatear la fecha para el cuerpo de la notificación
+        let body = format!("Entrega: {}", assignment.due_at);
+
+        let result = app
+            .notification()
+            .builder()
+            .title(&assignment.title)
+            .body(&body)
+            .show();
+
+        if result.is_ok() {
+            // Marcar como notificado para no repetir
+            let _ = conn.execute(
+                "UPDATE assignments SET notified = 1 WHERE id = ?1",
+                rusqlite::params![assignment.id],
+            );
+            sent += 1;
+        }
+    }
+
+    Ok(sent)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -4645,6 +4876,8 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         // Plugin Updater — auto-update con firma criptográfica
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Plugin Notification — notificaciones nativas del SO (Pomodoro + deadlines)
+        .plugin(tauri_plugin_notification::init())
         // Plugin SQL — SQLite con migraciones automáticas al iniciar
         .plugin(
             tauri_plugin_sql::Builder::default()
@@ -4674,6 +4907,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_device_fingerprint,
             get_trust_mode,
+            get_setting,
+            set_setting,
             start_canvas_sync,
             verify_canvas_token,
             open_or_download_file,
@@ -4684,7 +4919,8 @@ pub fn run() {
             pause_background_index,
             cancel_background_index,
             get_index_status,
-            generate_session_summary
+            generate_session_summary,
+            check_upcoming_deadlines
         ])
         .run(tauri::generate_context!())
         .expect("error al ejecutar la aplicación tauri");

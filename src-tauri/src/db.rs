@@ -476,5 +476,21 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        // Migración 12 — Productividad: columna notified en assignments + defaults de settings
+        Migration {
+            version: 12,
+            description: "productivity_notified_and_settings_defaults",
+            sql: "
+                -- Columna para marcar assignments ya notificados (evita notificaciones repetidas)
+                ALTER TABLE assignments ADD COLUMN notified INTEGER DEFAULT 0;
+
+                -- Defaults de configuración del Pomodoro y deadline notifications
+                INSERT OR IGNORE INTO settings (key, value) VALUES ('pomodoro_focus_minutes', '25');
+                INSERT OR IGNORE INTO settings (key, value) VALUES ('pomodoro_break_minutes', '5');
+                INSERT OR IGNORE INTO settings (key, value) VALUES ('deadline_notifications_enabled', 'true');
+                INSERT OR IGNORE INTO settings (key, value) VALUES ('deadline_lookahead_hours', '24');
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }

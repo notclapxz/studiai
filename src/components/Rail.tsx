@@ -4,8 +4,9 @@
 import { useState, useEffect } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
-import { Settings, Calendar, BookOpen } from "lucide-react";
+import { Settings, Calendar, BookOpen, Timer } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
+import { useTimerStore } from "../store/timerStore";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +23,7 @@ interface RailProps {
   onSelectCurso: (id: string) => void;
   onOpenSettings: () => void;
   onOpenTareas: () => void;
+  onPomodoroClick: () => void;
 }
 
 type IndexPhase = "idle" | "processing" | "done";
@@ -360,11 +362,17 @@ export function Rail({
   onSelectCurso,
   onOpenSettings,
   onOpenTareas,
+  onPomodoroClick,
 }: RailProps) {
   const [logoHover, setLogoHover] = useState(false);
   const indexState = useIndexState();
   const isIndexActive = indexState.phase !== "idle";
   const { licenseStatus } = useAuthStore();
+  const { phase, secondsLeft, isRunning } = useTimerStore();
+
+  // Badge del Pomodoro: mostrar minutos restantes cuando está activo
+  const pomodoroActive = phase !== "idle";
+  const pomodoroMinutes = Math.ceil(secondsLeft / 60);
 
   return (
     <aside
@@ -425,6 +433,32 @@ export function Rail({
 
       {/* ── Botones inferiores ────────────────────────────── */}
       <div className="flex flex-col gap-1 items-center">
+        {/* Botón Pomodoro con badge de minutos restantes */}
+        <div className="relative">
+          <IconButton
+            icon={<Timer size={18} strokeWidth={1.5} />}
+            label="Pomodoro timer"
+            onClick={onPomodoroClick}
+          />
+          {pomodoroActive && (
+            <span
+              className="absolute -top-1 -right-1 rounded-full flex items-center justify-center text-white pointer-events-none"
+              style={{
+                minWidth: 16,
+                height: 16,
+                fontSize: 9,
+                fontWeight: 700,
+                background: phase === "focus" ? "#dc2626" : "#16a34a",
+                padding: "0 3px",
+                boxShadow: isRunning
+                  ? `0 0 6px ${phase === "focus" ? "rgba(220,38,38,0.6)" : "rgba(22,163,74,0.6)"}`
+                  : "none",
+              }}
+            >
+              {pomodoroMinutes}
+            </span>
+          )}
+        </div>
         <IconButton
           icon={<Calendar size={18} strokeWidth={1.5} />}
           label="Tareas proximas"

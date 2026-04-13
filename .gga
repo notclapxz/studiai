@@ -1,0 +1,7 @@
+# GGA config local — StudyAI
+PROVIDER="claude"
+FILE_PATTERNS="*.ts,*.tsx"
+EXCLUDE_PATTERNS="*.test.*,*.spec.*,*.d.ts,dist/*,build/*,node_modules/*"
+RULES_FILE="AGENTS.md"
+STRICT_MODE="true"
+TIMEOUT="600"

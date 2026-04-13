@@ -22,6 +22,13 @@
     "opener:allow-open-path",
     "updater:default",
     "updater:allow-check",
-    "updater:allow-download-and-install"
+    "updater:allow-download-and-install",
+    "notification:default",
+    "notification:allow-request-permission",
+    "notification:allow-check-permissions",
+    "notification:allow-show",
+    "notification:allow-notify",
+    "notification:allow-is-permission-granted",
+    "notification:allow-permission-state"
   ]
 }

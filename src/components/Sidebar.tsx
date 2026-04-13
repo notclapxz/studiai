@@ -33,6 +33,7 @@ interface SidebarProps {
   onDeleteChat: (id: string) => void;
   onNuevaSession: () => void;
   onOpenArchivo: (archivo: Archivo) => void;
+  onSync: () => void;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -181,6 +182,7 @@ export function Sidebar({
   onDeleteChat,
   onNuevaSession,
   onOpenArchivo,
+  onSync,
 }: SidebarProps) {
   // ── Atajo Cmd+B para expandir/colapsar ───────────────────────
   useEffect(() => {
@@ -228,8 +230,9 @@ export function Sidebar({
               {cursoSeleccionado?.nombre ?? "Sin curso seleccionado"}
             </p>
           </div>
-          {/* Botón sync (solo UI por ahora) */}
+          {/* Botón sync */}
           <button
+            onClick={onSync}
             className="w-6 h-6 rounded flex items-center justify-center shrink-0 transition-colors duration-100 outline-none"
             style={{ color: "var(--text-weak)" }}
             onMouseEnter={(e) => {

@@ -4,9 +4,10 @@
 // El browser externo del sistema (Chrome/Safari/Firefox) maneja el flujo OAuth,
 // NO la WebView de Tauri — esto evita conflictos con el sandbox de Google.
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { BookOpen } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { getVersion } from "@tauri-apps/api/app";
 import { supabase } from "../lib/supabase";
 
 interface LoginProps {
@@ -19,6 +20,11 @@ export function Login({ onLogin: _onLogin }: LoginProps) {
   // Estado local: loading del botón y mensaje de error
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [appVersion, setAppVersion] = useState<string>("");
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => {/* silencioso si falla en dev */});
+  }, []);
 
   // ── Handler de Google Sign In ─────────────────────────────────────────────
 
@@ -250,7 +256,7 @@ export function Login({ onLogin: _onLogin }: LoginProps) {
         className="absolute bottom-4 right-6 text-xs"
         style={{ color: "var(--text-ghost, rgba(255,255,255,0.18))" }}
       >
-        v0.1.0-alpha
+        v{appVersion || "—"}
       </span>
     </div>
   );

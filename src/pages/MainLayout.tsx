@@ -442,7 +442,7 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
       }
     } catch (err) {
       console.error("[MainLayout] Error al abrir archivo:", err);
-      // TODO: mostrar toast de error cuando se implemente el sistema de notificaciones
+      addToast({ variant: "error", message: "No se pudo abrir el archivo. Verificá tu conexión." });
     } finally {
       setDownloadingDocId(null);
     }
@@ -477,6 +477,10 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
         onDeleteChat={handleDeleteChat}
         onNuevaSession={handleNuevaSession}
         onOpenArchivo={handleOpenArchivo}
+        onSync={() => {
+          setSettingsSection("canvas");
+          setShowSettings(true);
+        }}
       />
 
       {/* ── 3. Panel central — vacío si no hay cursos ─────────── */}

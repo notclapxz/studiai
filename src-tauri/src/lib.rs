@@ -1112,7 +1112,13 @@ async fn background_index_loop(
             "done": done_now
         }));
 
-        let permit = std::sync::Arc::clone(&sem).acquire_owned().await.unwrap();
+        let permit = match std::sync::Arc::clone(&sem).acquire_owned().await {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("[index] semáforo cerrado: {e}");
+                return;
+            }
+        };
         let (app2, cancel2) = (app.clone(), cancel.clone());
         let session_bytes2 = session_bytes.clone();
         let session_jobs2 = session_jobs_processed.clone();
@@ -3984,7 +3990,13 @@ async fn agentic_loop(
         window.emit("chat-stream-thinking", "Consultando tus datos...").ok();
 
         // Recoger los functionCalls del último turn del modelo
-        let last_model_turn = contents.last().unwrap();
+        let last_model_turn = match contents.last() {
+            Some(c) => c,
+            None => {
+                eprintln!("[agentic loop] contents vacío al intentar obtener último mensaje");
+                break;
+            }
+        };
         let parts = last_model_turn["parts"]
             .as_array()
             .cloned()

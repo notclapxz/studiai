@@ -6,7 +6,7 @@ import path from "node:path";
 const root = process.cwd();
 
 test("settings copy de razonamiento no expone proveedor/modelo", () => {
-  const settingsPath = path.join(root, "src", "components", "SettingsModal.tsx");
+  const settingsPath = path.join(root, "src", "components", "settings", "CuentaSection.tsx");
   const content = fs.readFileSync(settingsPath, "utf8");
 
   assert.ok(

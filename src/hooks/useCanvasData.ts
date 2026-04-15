@@ -130,19 +130,40 @@ export function useCourses(): UseCoursesResult {
       try {
         const db = await Database.load("sqlite:studyai.db");
         // Solo traer cursos del semestre más reciente (evita mezclar 2025-02 con 2026-01)
+        // Detectar cursos activos de forma flexible:
+        // USIL usa "2026-01" / "2025-02" — UTEC usa "SEDE BARRANCO - 2026 - 1"
+        // Estrategia: filtrar cursos cuyo semester contenga un año 20XX,
+        // agrupar por año más alto detectado, mostrar todos los de ese año.
+        // Fallback: si no hay ninguno con año, mostrar todos los cursos.
         const rows = await db.select<CursoDb[]>(
-          `WITH valid AS (
+          `WITH all_courses AS (
             SELECT id, canvas_id, name, code, semester, synced_at
             FROM courses
-            WHERE semester LIKE '%20__-0%' OR semester LIKE '%20__-1%'
+            WHERE semester IS NOT NULL AND semester != '' AND semester != 'Período predeterminado'
           ),
-          latest AS (
-            SELECT MAX(semester) as max_sem FROM valid
+          with_year AS (
+            SELECT *,
+              CAST(
+                CASE
+                  -- Formato USIL: "2026-01" → extrae "2026"
+                  WHEN semester GLOB '20[0-9][0-9]-*' THEN substr(semester, 1, 4)
+                  -- Formato UTEC: "SEDE BARRANCO - 2026 - 1" → busca primer 20XX
+                  WHEN semester LIKE '%20__-%' THEN
+                    substr(semester, instr(semester, '20'), 4)
+                  WHEN semester LIKE '%20__ %' THEN
+                    substr(semester, instr(semester, '20'), 4)
+                  ELSE '0'
+                END
+              AS INTEGER) as year
+            FROM all_courses
+          ),
+          max_year AS (
+            SELECT MAX(year) as top_year FROM with_year WHERE year > 2000
           )
-          SELECT v.id, v.canvas_id, v.name, v.code, v.semester, v.synced_at
-          FROM valid v, latest
-          WHERE v.semester = latest.max_sem
-          ORDER BY v.name`
+          SELECT w.id, w.canvas_id, w.name, w.code, w.semester, w.synced_at
+          FROM with_year w, max_year
+          WHERE w.year = max_year.top_year OR (max_year.top_year IS NULL AND w.year = 0)
+          ORDER BY w.name`
         );
 
         if (!cancelled) {

@@ -958,14 +958,27 @@ fn recover_crashed_jobs(app: &tauri::AppHandle) {
             []
         );
         // Limpiar jobs de semestres anteriores (pending/failed de ciclos viejos)
+        // Usa la misma lógica flexible de detección de año que queue_pending_documents
         let _ = conn.execute(
             "DELETE FROM index_jobs WHERE document_id IN (
                 SELECT d.id FROM documents d
                 JOIN courses c ON c.id = d.course_id
-                WHERE c.semester NOT IN (
-                    SELECT MAX(semester) FROM courses
-                    WHERE semester LIKE '%20__-0%' OR semester LIKE '%20__-1%'
-                )
+                WHERE CAST(
+                    CASE
+                        WHEN c.semester GLOB '20[0-9][0-9]-*' THEN substr(c.semester, 1, 4)
+                        WHEN c.semester LIKE '%20__-%' THEN substr(c.semester, instr(c.semester, '20'), 4)
+                        WHEN c.semester LIKE '%20__ %' THEN substr(c.semester, instr(c.semester, '20'), 4)
+                        ELSE '0'
+                    END AS INTEGER) < (
+                        SELECT MAX(CAST(
+                            CASE
+                                WHEN semester GLOB '20[0-9][0-9]-*' THEN substr(semester, 1, 4)
+                                WHEN semester LIKE '%20__-%' THEN substr(semester, instr(semester, '20'), 4)
+                                WHEN semester LIKE '%20__ %' THEN substr(semester, instr(semester, '20'), 4)
+                                ELSE '0'
+                            END AS INTEGER))
+                        FROM courses WHERE semester IS NOT NULL
+                    )
             ) AND status IN ('pending', 'failed')",
             []
         );
@@ -979,6 +992,8 @@ fn queue_pending_documents(app: &tauri::AppHandle, active_course_id: Option<i64>
 
     // Parameterized query — ?1 = active_course_id (NULL if none). The CASE WHEN uses
     // IS NOT DISTINCT FROM via the NULL-safe `IS` operator so a NULL ?1 never matches.
+    // Filtro de semestre flexible: detecta año 20XX en cualquier formato
+    // USIL: "2026-01" | UTEC: "SEDE BARRANCO - 2026 - 1" | otros LMS
     let sql = "INSERT OR IGNORE INTO index_jobs (document_id, priority)
          SELECT d.id, CASE WHEN ?1 IS NOT NULL AND d.course_id = ?1 THEN 10 ELSE 100 END
          FROM documents d
@@ -987,9 +1002,21 @@ fn queue_pending_documents(app: &tauri::AppHandle, active_course_id: Option<i64>
            AND d.is_scanned = 0
            AND d.download_url IS NOT NULL
            AND (d.file_type LIKE '%pdf%' OR d.file_type LIKE '%word%' OR d.file_type LIKE '%document%')
-           AND c.semester IN (
-             SELECT MAX(semester) FROM courses
-             WHERE semester LIKE '%20__-0%' OR semester LIKE '%20__-1%'
+           AND CAST(
+             CASE
+               WHEN c.semester GLOB '20[0-9][0-9]-*' THEN substr(c.semester, 1, 4)
+               WHEN c.semester LIKE '%20__-%' THEN substr(c.semester, instr(c.semester, '20'), 4)
+               WHEN c.semester LIKE '%20__ %' THEN substr(c.semester, instr(c.semester, '20'), 4)
+               ELSE '0'
+             END AS INTEGER) = (
+               SELECT MAX(CAST(
+                 CASE
+                   WHEN semester GLOB '20[0-9][0-9]-*' THEN substr(semester, 1, 4)
+                   WHEN semester LIKE '%20__-%' THEN substr(semester, instr(semester, '20'), 4)
+                   WHEN semester LIKE '%20__ %' THEN substr(semester, instr(semester, '20'), 4)
+                   ELSE '0'
+                 END AS INTEGER))
+               FROM courses WHERE semester IS NOT NULL AND semester != ''
            )
            AND NOT EXISTS (
              SELECT 1 FROM index_jobs j

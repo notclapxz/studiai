@@ -881,17 +881,37 @@ async fn run_download_sync(
             }
         };
 
-        // Determinar directorio base de descarga según preferencia
+        // Determinar directorio base de descarga según preferencia.
+        // Si el usuario eligió carpeta local pero canceló el picker (sin path guardado),
+        // usamos el fallback app_data_dir/downloads/ Y lo persistimos en settings
+        // para que Settings → Canvas pueda mostrarlo sin adivinar.
         let effective_base_dir = if storage_pref == "local_folder" {
             match read_setting(window, "download_path") {
                 Some(p) if !p.is_empty() => PathBuf::from(p),
                 _ => {
                     // Fallback: app_data_dir/downloads/
-                    window.app_handle()
+                    let fallback = window.app_handle()
                         .path()
                         .app_data_dir()
                         .unwrap_or_else(|_| base_dir.clone())
-                        .join("downloads")
+                        .join("downloads");
+
+                    // Persistir el fallback para que sea visible en Settings
+                    if let Ok(app_data) = window.app_handle().path().app_data_dir() {
+                        let db_path = app_data.join("studyai.db");
+                        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+                            let fallback_str = fallback.to_string_lossy().to_string();
+                            conn.execute(
+                                "INSERT OR REPLACE INTO settings (key, value) VALUES ('download_path', ?1)",
+                                rusqlite::params![fallback_str],
+                            ).unwrap_or_else(|e| {
+                                log::warn!("[canvas::sync] No se pudo persistir fallback download_path: {e}");
+                                0
+                            });
+                        }
+                    }
+
+                    fallback
                 }
             }
         } else {

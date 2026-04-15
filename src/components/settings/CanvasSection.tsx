@@ -381,12 +381,22 @@ export function CanvasSection({
             </p>
             <p className="text-[11px] mt-0.5" style={{ color: "var(--text-weak)" }}>
               {storageInfo?.preference === "db_only" && "Solo base de datos"}
-              {storageInfo?.preference === "local_folder" &&
-                `Carpeta local${storageInfo.path ? `: ${storageInfo.path}` : ""}`}
+              {storageInfo?.preference === "local_folder" && (
+                storageInfo.path
+                  ? <span title={storageInfo.path} style={{ wordBreak: "break-all" }}>
+                      Carpeta local: {storageInfo.path}
+                    </span>
+                  : "Carpeta local — se asignará al primer sync"
+              )}
               {(!storageInfo?.preference || storageInfo.preference === "") &&
                 "No configurado aún"}
             </p>
-            {storageInfo?.preference && (
+            {storageInfo?.preference === "local_folder" && storageInfo.path && (
+              <p className="text-[10px] mt-0.5" style={{ color: "var(--text-ghost)" }}>
+                Los archivos nuevos se guardan aquí. Los existentes no se mueven.
+              </p>
+            )}
+            {storageInfo?.preference === "db_only" && (
               <p className="text-[10px] mt-0.5" style={{ color: "var(--text-ghost)" }}>
                 Aplica a descargas futuras
               </p>

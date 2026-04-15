@@ -73,15 +73,15 @@ jobs:
           releaseBody: |
             ## ¿Qué hay de nuevo?
 
+            ### 🔄 Progreso de actualización visible
+            - Al instalar una actualización ya no desaparece la pantalla sin aviso
+            - Overlay con barra de progreso de descarga (con porcentaje real), fase de instalación y fase de reinicio
+            - La pantalla persiste hasta que la app se cierra — sabés exactamente qué está pasando
+
             ### 🎨 Diseño renovado
             - Sistema de tokens de color unificado — toda la app usa una paleta consistente
             - Nueva fuente **Geist** para mejor legibilidad
             - Notificaciones rediseñadas con animaciones nativas
-
-            ### 🔄 Actualizaciones automáticas mejoradas
-            - El updater ya no instala solo — ahora te pregunta antes con un botón "Instalar"
-            - Nuevo botón "Buscar actualizaciones" en Configuración → Acerca de
-            - Corrección de bug crítico: `relaunch()` ahora funciona correctamente después de instalar
 
             ### 📁 Control sobre tus archivos
             - Al sincronizar por primera vez podés elegir dónde guardar tus materiales:
@@ -95,6 +95,10 @@ jobs:
             ### 👤 Cambio de cuenta Canvas
             - Si conectás una cuenta diferente, los archivos del usuario anterior se limpian automáticamente
             - Si solo renovás el token (misma cuenta), no se borra nada
+
+            ### 🐛 Fixes
+            - Corregido error "FOREIGN KEY constraint failed" al cambiar de cuenta Canvas
+            - Corregido orden de borrado de tablas en limpieza de usuario anterior
 
             ---
 
@@ -163,7 +167,7 @@ jobs:
             --arg tv "$TAURI_VERSION" \
             '{
               version: $version,
-              notes: "v0.12.0 — Diseño renovado, duplicados auto-eliminados, control de dónde guardar archivos, detección de cambio de cuenta Canvas.",
+              notes: "v0.13.0 — Overlay de progreso al instalar actualizaciones, fix cambio de cuenta Canvas (FK constraint), fix orden de borrado de tablas.",
               pub_date: $pub_date,
               platforms: {
                 "darwin-aarch64": {

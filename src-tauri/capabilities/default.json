@@ -24,7 +24,7 @@
     "updater:allow-check",
     "updater:allow-download-and-install",
     "process:default",
-    "process:allow-relaunch",
+    "process:allow-restart",
     "notification:default",
     "notification:allow-request-permission",
     "notification:allow-check-permissions",

@@ -1539,6 +1539,209 @@ async fn get_index_status(app: tauri::AppHandle) -> Result<serde_json::Value, St
     }))
 }
 
+// ─── Comandos Tauri: documentos manuales ─────────────────────────────────────
+
+/// Sube un PDF local al curso, detecta duplicados por hash de contenido y encola indexado.
+///
+/// Lógica:
+/// 1. Leer primeros 64KB → SHA-256 → hex string (fingerprint del contenido)
+/// 2. Verificar duplicado en la misma asignatura
+/// 3. Resolver título único si ya existe uno con ese nombre
+/// 4. Copiar archivo a app_data_dir/uploads/manual/{course_id}/{doc_id}_{safe_title}.pdf
+/// 5. INSERT en documents con canvas_file_id = NULL y content_hash
+/// 6. INSERT en index_jobs con prioridad 5 (más urgente que Canvas sync)
+/// 7. Emitir evento "manual-upload-indexed"
+/// 8. Activar queue_pending_documents para que el loop lo recoja
+#[tauri::command]
+async fn upload_manual_pdf(
+    app: tauri::AppHandle,
+    course_id: i64,
+    file_path: String,
+    title: String,
+) -> Result<serde_json::Value, String> {
+    use sha2::{Sha256, Digest};
+
+    // 1. Leer primeros 64KB y calcular SHA-256
+    let file_bytes = std::fs::read(&file_path)
+        .map_err(|e| format!("No se pudo leer el archivo: {e}"))?;
+    let chunk = &file_bytes[..file_bytes.len().min(65536)];
+    let mut hasher = Sha256::new();
+    hasher.update(chunk);
+    let hash = format!("{:x}", hasher.finalize());
+
+    let conn = open_db(&app)?;
+
+    // 2. Verificar duplicado por hash + course_id
+    let existing: Option<(i64, String)> = conn.query_row(
+        "SELECT id, title FROM documents WHERE content_hash = ?1 AND course_id = ?2",
+        rusqlite::params![hash, course_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).ok();
+
+    if let Some((_id, existing_title)) = existing {
+        return Ok(serde_json::json!({
+            "ok": false,
+            "reason": "duplicate",
+            "existing_title": existing_title
+        }));
+    }
+
+    // 3. Resolver título único (evitar colisión con idx_documents_title_course)
+    let resolved_title = {
+        let base = title.clone();
+        let exists: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM documents WHERE title = ?1 AND course_id = ?2",
+            rusqlite::params![base, course_id],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        if exists == 0 {
+            base
+        } else {
+            // Buscar el primer sufijo numérico disponible: "título (2)", "título (3)", ...
+            let mut n = 2i64;
+            let mut found = format!("{} ({})", base, n);
+            while n < 1000 {
+                let candidate = format!("{} ({})", base, n);
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM documents WHERE title = ?1 AND course_id = ?2",
+                    rusqlite::params![candidate, course_id],
+                    |row| row.get(0),
+                ).unwrap_or(0);
+                if count == 0 {
+                    found = candidate;
+                    break;
+                }
+                n += 1;
+            }
+            found
+        }
+    };
+
+    // 4. Preparar directorio de destino y nombre seguro del archivo
+    // Se usa un placeholder de doc_id antes del INSERT para no reservar IDs
+    // El path final usa el doc_id real obtenido post-INSERT via last_insert_rowid
+    let safe_title: String = resolved_title
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .collect::<String>()
+        .chars()
+        .take(80)
+        .collect();
+
+    let uploads_base = app.path()
+        .app_data_dir()
+        .map_err(|e| format!("No se pudo resolver app_data_dir: {e}"))?
+        .join("uploads")
+        .join("manual")
+        .join(course_id.to_string());
+
+    std::fs::create_dir_all(&uploads_base)
+        .map_err(|e| format!("No se pudo crear el directorio de uploads: {e}"))?;
+
+    // 5. INSERT en documents (canvas_file_id = NULL identifica docs manuales)
+    conn.execute(
+        "INSERT INTO documents (course_id, canvas_file_id, title, file_path, file_type, content_hash, download_url, has_embeddings, is_scanned)
+         VALUES (?1, NULL, ?2, '', 'application/pdf', ?3, NULL, 0, 0)",
+        rusqlite::params![course_id, resolved_title, hash],
+    ).map_err(|e| format!("Error al insertar documento: {e}"))?;
+
+    let doc_id = conn.last_insert_rowid();
+
+    // Ahora construir el path final con el doc_id real
+    let dest_filename = format!("{}_{}.pdf", doc_id, safe_title);
+    let dest_path = uploads_base.join(&dest_filename);
+    let dest_path_str = dest_path.display().to_string();
+
+    // Copiar archivo al directorio de uploads
+    std::fs::copy(&file_path, &dest_path)
+        .map_err(|e| format!("No se pudo copiar el archivo: {e}"))?;
+
+    // Actualizar file_path con el path definitivo
+    conn.execute(
+        "UPDATE documents SET file_path = ?1 WHERE id = ?2",
+        rusqlite::params![dest_path_str, doc_id],
+    ).map_err(|e| format!("Error al actualizar file_path: {e}"))?;
+
+    // 6. INSERT en index_jobs — prioridad 5 (más urgente que Canvas sync=100 y active=10)
+    conn.execute(
+        "INSERT OR IGNORE INTO index_jobs (document_id, priority) VALUES (?1, 5)",
+        rusqlite::params![doc_id],
+    ).map_err(|e| format!("Error al insertar index_job: {e}"))?;
+
+    // 7. Emitir evento de confirmación al frontend
+    let _ = app.emit("manual-upload-indexed", serde_json::json!({
+        "doc_id": doc_id,
+        "title": resolved_title,
+        "course_id": course_id
+    }));
+
+    // 8. Activar el loop de indexado para que procese el nuevo documento
+    queue_pending_documents(&app, Some(course_id));
+
+    Ok(serde_json::json!({
+        "ok": true,
+        "doc_id": doc_id,
+        "title": resolved_title
+    }))
+}
+
+/// Elimina un documento subido manualmente: borra el archivo físico y los registros en DB.
+///
+/// Solo permite borrar documentos con canvas_file_id IS NULL (documentos manuales).
+/// Los documentos de Canvas no se pueden eliminar desde aquí — se sincronizan desde Canvas.
+///
+/// v1: borra el archivo físico junto con el registro.
+/// Si en el futuro se agrega sync entre dispositivos, cambiar a
+/// soft-delete (is_deleted=1) y mover el borrado físico a un GC periódico.
+#[tauri::command]
+async fn delete_manual_document(
+    app: tauri::AppHandle,
+    doc_id: i64,
+) -> Result<(), String> {
+    let conn = open_db(&app)?;
+
+    // 1. Obtener info del documento
+    let (file_path, canvas_file_id): (Option<String>, Option<i64>) = conn.query_row(
+        "SELECT file_path, canvas_file_id FROM documents WHERE id = ?1",
+        rusqlite::params![doc_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).map_err(|e| format!("Documento no encontrado: {e}"))?;
+
+    // 2. Guard: solo documentos manuales (canvas_file_id IS NULL)
+    if canvas_file_id.is_some() {
+        return Err("No se pueden eliminar documentos de Canvas".to_string());
+    }
+
+    // 3. Borrar archivo físico (si falla, advertir pero continuar — puede no existir)
+    if let Some(ref path) = file_path {
+        if !path.is_empty() {
+            if let Err(e) = std::fs::remove_file(path) {
+                eprintln!("[delete_manual_document] No se pudo borrar el archivo físico '{}': {}", path, e);
+                // Continuar — el registro debe borrarse aunque el archivo no exista
+            }
+        }
+    }
+
+    // 4. Borrar index_jobs del documento (ON DELETE CASCADE lo haría, pero siendo explícitos)
+    conn.execute(
+        "DELETE FROM index_jobs WHERE document_id = ?1",
+        rusqlite::params![doc_id],
+    ).map_err(|e| format!("Error al borrar index_jobs: {e}"))?;
+
+    // 5. Borrar documento — guard extra: solo si canvas_file_id IS NULL
+    let deleted = conn.execute(
+        "DELETE FROM documents WHERE id = ?1 AND canvas_file_id IS NULL",
+        rusqlite::params![doc_id],
+    ).map_err(|e| format!("Error al borrar documento: {e}"))?;
+
+    if deleted == 0 {
+        return Err("No se encontró el documento o no es un documento manual".to_string());
+    }
+
+    Ok(())
+}
+
 /// Comando Tauri: extrae texto de un PDF, lo chunkea y lo indexa en FTS5.
 /// Si el PDF es escaneado (sin texto extraíble), intenta OCR con Gemini Vision.
 /// Retorna "scanned" si el PDF no contiene texto extraíble incluso tras OCR,
@@ -5154,7 +5357,9 @@ pub fn run() {
             generate_session_summary,
             check_upcoming_deadlines,
             get_storage_preference,
-            set_storage_preference
+            set_storage_preference,
+            upload_manual_pdf,
+            delete_manual_document
         ])
         .run(tauri::generate_context!())
         .expect("error al ejecutar la aplicación tauri");

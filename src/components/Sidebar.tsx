@@ -2,7 +2,7 @@
 // 240px fijo, expandible/colapsable con Cmd+B
 
 import { useEffect } from "react";
-import { RefreshCw, Sparkles, BookOpen, Folder, FileText, MessageSquare, Loader2, Trash2 } from "lucide-react";
+import { RefreshCw, Sparkles, BookOpen, Folder, FileText, Paperclip, MessageSquare, Loader2, Trash2, Plus, X } from "lucide-react";
 import type { Curso } from "./Rail";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
@@ -14,6 +14,8 @@ export interface Archivo {
   carpeta?: string;
   /** true mientras se descarga/abre este archivo */
   isLoading?: boolean;
+  /** null = documento manual; número = archivo de Canvas */
+  canvasFileId?: number | null;
 }
 
 export interface ChatReciente {
@@ -34,16 +36,19 @@ interface SidebarProps {
   onNuevaSession: () => void;
   onOpenArchivo: (archivo: Archivo) => void;
   onSync: () => void;
+  /** Abre el file picker para subir PDFs manualmente */
+  onAddManualPdf?: () => void;
+  /** Elimina un documento manual por su id numérico */
+  onDeleteManualDocument?: (docId: number) => void;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/** Devuelve el icono Lucide correspondiente al tipo de archivo */
-function IconoArchivo({ tipo }: { tipo: Archivo["tipo"] }) {
-  // pdf, docx, xlsx, pptx → FileText; img → FileText; otro → Folder
-  if (tipo === "otro") {
-    return <Folder size={14} strokeWidth={1.5} />;
-  }
+/** Devuelve el icono Lucide correspondiente al tipo de archivo.
+ *  Documentos manuales (canvasFileId === null) usan Paperclip para distinguirlos visualmente. */
+function IconoArchivo({ tipo, esManual }: { tipo: Archivo["tipo"]; esManual?: boolean }) {
+  if (esManual) return <Paperclip size={14} strokeWidth={1.5} />;
+  if (tipo === "otro") return <Folder size={14} strokeWidth={1.5} />;
   return <FileText size={14} strokeWidth={1.5} />;
 }
 
@@ -52,43 +57,69 @@ function IconoArchivo({ tipo }: { tipo: Archivo["tipo"] }) {
 interface ItemArchivoProps {
   archivo: Archivo;
   onOpen: (archivo: Archivo) => void;
+  onDelete?: (docId: number) => void;
 }
 
-function ItemArchivo({ archivo, onOpen }: ItemArchivoProps) {
+function ItemArchivo({ archivo, onOpen, onDelete }: ItemArchivoProps) {
   const isLoading = archivo.isLoading ?? false;
+  const esManual = archivo.canvasFileId === null;
 
   return (
-    <button
-      onClick={() => !isLoading && onOpen(archivo)}
-      disabled={isLoading}
-      className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-left group transition-colors duration-100 outline-none disabled:opacity-60 disabled:cursor-wait"
-      style={{ color: "var(--text-base)" }}
+    <div
+      className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md group transition-colors duration-100"
       onMouseEnter={(e) => {
         if (!isLoading) {
-          (e.currentTarget as HTMLElement).style.background =
-            "var(--bg-surface-hover)";
+          (e.currentTarget as HTMLElement).style.background = "var(--bg-surface-hover)";
         }
       }}
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLElement).style.background = "transparent";
       }}
-      title={isLoading ? "Descargando…" : archivo.nombre}
     >
-      <span className="shrink-0" style={{ color: "var(--text-weak)" }}>
-        {isLoading ? (
-          <Loader2 size={14} strokeWidth={1.5} className="animate-spin" />
-        ) : (
-          <IconoArchivo tipo={archivo.tipo} />
-        )}
-      </span>
-      <span
-        className="text-xs truncate"
-        style={{ color: "var(--text-base)" }}
-        title={archivo.nombre}
+      {/* Zona clickeable para abrir */}
+      <button
+        onClick={() => !isLoading && onOpen(archivo)}
+        disabled={isLoading}
+        className="flex-1 flex items-center gap-2 text-left outline-none disabled:opacity-60 disabled:cursor-wait min-w-0"
+        title={isLoading ? "Descargando…" : archivo.nombre}
       >
-        {archivo.nombre}
-      </span>
-    </button>
+        <span className="shrink-0" style={{ color: esManual ? "var(--accent-warm)" : "var(--text-weak)" }}>
+          {isLoading ? (
+            <Loader2 size={14} strokeWidth={1.5} className="animate-spin" />
+          ) : (
+            <IconoArchivo tipo={archivo.tipo} esManual={esManual} />
+          )}
+        </span>
+        <span
+          className="text-xs truncate"
+          style={{ color: "var(--text-base)" }}
+          title={archivo.nombre}
+        >
+          {archivo.nombre}
+        </span>
+      </button>
+
+      {/* Botón eliminar — solo en documentos manuales */}
+      {esManual && onDelete && (
+        <button
+          className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-100 outline-none"
+          style={{ color: "var(--text-weak)" }}
+          title="Eliminar documento"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete(parseInt(archivo.id, 10));
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.color = "var(--error)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.color = "var(--text-weak)";
+          }}
+        >
+          <X size={12} strokeWidth={1.5} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -183,6 +214,8 @@ export function Sidebar({
   onNuevaSession,
   onOpenArchivo,
   onSync,
+  onAddManualPdf,
+  onDeleteManualDocument,
 }: SidebarProps) {
   // ── Atajo Cmd+B para expandir/colapsar ───────────────────────
   useEffect(() => {
@@ -275,10 +308,38 @@ export function Sidebar({
         <div className="flex-1 overflow-y-auto">
           {/* Sección: Archivos del curso */}
           <div className="pb-2">
-            <SectionHeader
-              label="Materiales"
-              icon={<BookOpen size={12} strokeWidth={1.5} />}
-            />
+            {/* Header con botón "+" para agregar PDF manual */}
+            <div className="flex items-center justify-between px-3 py-1.5">
+              <div className="flex items-center gap-1.5">
+                <span style={{ color: "var(--text-weak)" }}>
+                  <BookOpen size={12} strokeWidth={1.5} />
+                </span>
+                <span
+                  className="text-xs font-semibold uppercase tracking-wider"
+                  style={{ color: "var(--text-weak)", fontSize: "11px" }}
+                >
+                  Materiales
+                </span>
+              </div>
+              {onAddManualPdf && (
+                <button
+                  onClick={onAddManualPdf}
+                  title="Agregar PDF"
+                  className="w-5 h-5 rounded flex items-center justify-center transition-colors duration-100 outline-none"
+                  style={{ color: "var(--text-weak)" }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.color = "var(--text-base)";
+                    (e.currentTarget as HTMLElement).style.background = "var(--bg-surface-hover)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.color = "var(--text-weak)";
+                    (e.currentTarget as HTMLElement).style.background = "transparent";
+                  }}
+                >
+                  <Plus size={12} strokeWidth={2} />
+                </button>
+              )}
+            </div>
 
             {Object.entries(carpetas).map(([carpeta, archivosEnCarpeta]) => (
               <div key={carpeta} className="mb-1">
@@ -298,6 +359,7 @@ export function Sidebar({
                       key={archivo.id}
                       archivo={archivo}
                       onOpen={onOpenArchivo}
+                      onDelete={onDeleteManualDocument}
                     />
                   ))}
                 </div>
@@ -306,11 +368,30 @@ export function Sidebar({
 
             {/* Estado vacío */}
             {archivos.length === 0 && (
-              <div
-                className="px-3 py-4 text-xs text-center"
-                style={{ color: "var(--text-weak)" }}
-              >
-                No hay materiales en este curso
+              <div className="px-3 py-4 flex flex-col items-center gap-2">
+                <p className="text-xs text-center" style={{ color: "var(--text-weak)" }}>
+                  No hay materiales en este curso
+                </p>
+                {onAddManualPdf && (
+                  <button
+                    onClick={onAddManualPdf}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs transition-colors duration-100 outline-none"
+                    style={{
+                      color: "var(--accent)",
+                      background: "var(--accent-subtle)",
+                      border: "1px dashed var(--accent-warm-border, var(--border-base))",
+                    }}
+                    onMouseEnter={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "var(--accent-warm-subtle, var(--accent-subtle))";
+                    }}
+                    onMouseLeave={(e) => {
+                      (e.currentTarget as HTMLElement).style.background = "var(--accent-subtle)";
+                    }}
+                  >
+                    <Plus size={12} strokeWidth={2} />
+                    Agregar PDF
+                  </button>
+                )}
               </div>
             )}
           </div>

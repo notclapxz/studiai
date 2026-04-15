@@ -512,5 +512,18 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        // Migración 15 — Soporte de documentos cargados manualmente (upload manual de PDFs)
+        // content_hash: SHA-256 de los primeros 64KB del archivo — para detectar duplicados
+        // sin depender de canvas_file_id (que es NULL en docs manuales).
+        // El índice compuesto (content_hash, course_id) permite la query de dedup en O(log n).
+        Migration {
+            version: 15,
+            description: "content_hash_for_manual_uploads",
+            sql: "
+                ALTER TABLE documents ADD COLUMN content_hash TEXT;
+                CREATE INDEX IF NOT EXISTS idx_documents_content_hash ON documents(content_hash, course_id);
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }

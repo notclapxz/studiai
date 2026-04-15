@@ -200,6 +200,7 @@ interface UseCourseDetailResult {
   announcements: Announcement[];
   loading: boolean;
   error: string | null;
+  refetch: () => void;
 }
 
 /**
@@ -213,6 +214,11 @@ export function useCourseDetail(courseId: number | null): UseCourseDetailResult 
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+
+  const refetch = useCallback(() => {
+    setTick((prev) => prev + 1);
+  }, []);
 
   useEffect(() => {
     if (courseId === null) {
@@ -239,8 +245,9 @@ export function useCourseDetail(courseId: number | null): UseCourseDetailResult 
             "SELECT * FROM assignments WHERE course_id = ? ORDER BY due_at ASC",
             [courseId]
           ),
-           db.select<Document[]>(
-            // Deduplicar por canvas_file_id (Canvas retorna el mismo archivo desde múltiples módulos)
+          db.select<Document[]>(
+            // Deduplicar por canvas_file_id (Canvas retorna el mismo archivo desde múltiples módulos).
+            // canvas_file_id NULL = documento manual — se agrupa por id propio para no colapsar.
             `SELECT MIN(id) as id, course_id, canvas_file_id, title, file_path, file_type,
                     download_url, content_text, has_embeddings, synced_at, created_at
              FROM documents
@@ -278,9 +285,9 @@ export function useCourseDetail(courseId: number | null): UseCourseDetailResult 
     return () => {
       cancelled = true;
     };
-  }, [courseId]);
+  }, [courseId, tick]);
 
-  return { assignments, documents, announcements, loading, error };
+  return { assignments, documents, announcements, loading, error, refetch };
 }
 
 // ─── Hook: useRecentActivity ──────────────────────────────────────────────────

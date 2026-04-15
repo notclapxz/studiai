@@ -4,6 +4,7 @@
 import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
 import Database from "@tauri-apps/plugin-sql";
 import { BookOpen } from "lucide-react";
 import { Rail } from "../components/Rail";
@@ -312,7 +313,7 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
     return isNaN(n) ? null : n;
   })();
 
-  const { documents, loading: loadingDetalle } = useCourseDetail(cursoSeleccionadoNumId);
+  const { documents, loading: loadingDetalle, refetch: refetchDocuments } = useCourseDetail(cursoSeleccionadoNumId);
 
   const { sessions: chatSessions, refetch: refetchSessions } = useChatSessions(cursoSeleccionadoNumId);
 
@@ -382,6 +383,7 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
         tipo: mapFileType(doc.file_type),
         carpeta: doc.file_type ? categorizeDocument(doc.file_type) : "Sin carpeta",
         isLoading: downloadingDocId === doc.id,
+        canvasFileId: doc.canvas_file_id,
       }));
 
   const docById: Map<string, Document> = new Map(
@@ -493,6 +495,69 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
     }
   }
 
+  // ── Handler: upload manual de PDFs ──────────────────────────
+  async function handleAddManualPdf() {
+    if (!cursoSeleccionadoNumId) return;
+
+    // File picker — múltiples PDFs permitidos
+    const selected = await openFilePicker({
+      directory: false,
+      multiple: true,
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+      title: "Seleccionar PDFs para agregar al curso",
+    });
+
+    const paths = Array.isArray(selected) ? selected : selected ? [selected] : [];
+    if (paths.length === 0) return;
+
+    for (const filePath of paths) {
+      const title = filePath.split("/").pop()?.replace(/\.pdf$/i, "") ?? "documento";
+
+      try {
+        const result = await invoke<{ ok: boolean; reason?: string; existing_title?: string; title?: string }>(
+          "upload_manual_pdf",
+          { courseId: cursoSeleccionadoNumId, filePath, title }
+        );
+
+        if (!result.ok && result.reason === "duplicate") {
+          addToast({
+            variant: "warning",
+            message: `"${title}" ya está en tus materiales`,
+            duration: 4000,
+          });
+        } else if (result.ok) {
+          addToast({
+            variant: "success",
+            message: `"${result.title}" agregado — indexando...`,
+            duration: 4000,
+          });
+          refetchDocuments();
+          // Lanzar indexado del curso activo
+          invoke("start_background_index", { activeCourseId: cursoSeleccionadoNumId }).catch(console.error);
+        }
+      } catch (err: unknown) {
+        addToast({
+          variant: "error",
+          message: `Error al agregar "${title}"`,
+          duration: 5000,
+        });
+        console.error("[upload] Error:", err);
+      }
+    }
+  }
+
+  // ── Handler: eliminar documento manual ──────────────────────
+  async function handleDeleteManualDocument(docId: number) {
+    try {
+      await invoke("delete_manual_document", { docId });
+      addToast({ variant: "success", message: "Documento eliminado", duration: 3000 });
+      refetchDocuments();
+    } catch (err: unknown) {
+      addToast({ variant: "error", message: "Error al eliminar el documento", duration: 4000 });
+      console.error("[delete_manual] Error:", err);
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────
 
   return (
@@ -526,6 +591,8 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
           setSettingsSection("canvas");
           setShowSettings(true);
         }}
+        onAddManualPdf={handleAddManualPdf}
+        onDeleteManualDocument={handleDeleteManualDocument}
       />
 
       {/* ── 3. Panel central — vacío si no hay cursos ─────────── */}

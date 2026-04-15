@@ -1,38 +1,25 @@
 // updater.ts — Sistema de auto-actualización de StudiAI
-//
-// Guard: solo corre en builds empaquetados (window.__TAURI_INTERNALS__ siempre
-// existe en Tauri, pero `__TAURI_INTERNALS__.metadata` solo existe en builds
-// reales — en tauri dev el plugin updater lanza un error porque no hay endpoint
-// al que conectarse. Usamos invoke("tauri_is_packaged") no está disponible, así
-// que la guarda más simple y robusta es capturar el error del check() y silenciarlo
-// como ya hace el try/catch, pero ADEMÁS detectar si estamos en modo dev via
-// import.meta.env.DEV (Vite lo inyecta en build time).
 
 import { check } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { invoke } from "@tauri-apps/api/core";
+import type { UpdatePhase } from "../components/UpdateProgressOverlay";
 
-// Guard: en dev (tauri dev) el updater no tiene endpoint real — skip silencioso.
-// En producción (tauri build) esta constante es false y el updater corre normal.
 export const UPDATER_ENABLED = !import.meta.env.DEV;
+
+export interface UpdaterProgressCallbacks {
+  onPhaseChange: (phase: UpdatePhase) => void;
+  onProgress: (percent: number) => void;
+}
 
 export interface UpdaterCallback {
   (opts: {
     version: string;
-    /** Llama a esta función cuando el usuario confirme que quiere instalar */
-    onInstall: () => Promise<void>;
+    /** Llama cuando el usuario confirma. Reporta progreso via callbacks. */
+    onInstall: (progress: UpdaterProgressCallbacks) => Promise<void>;
   }): void;
 }
 
-/**
- * Chequea si hay una nueva versión disponible.
- * Si la hay, llama a `onUpdate` con la versión y un callback `onInstall`.
- *
- * El caller decide cuándo instalar (botón explícito del usuario).
- * Esta función NO instala automáticamente.
- *
- * Guard: no hace nada en tauri dev (UPDATER_ENABLED = false).
- */
 export async function checkForUpdates(onUpdate: UpdaterCallback): Promise<void> {
   if (!UPDATER_ENABLED) return;
 
@@ -42,9 +29,8 @@ export async function checkForUpdates(onUpdate: UpdaterCallback): Promise<void> 
 
     onUpdate({
       version: update.version,
-      onInstall: async () => {
-        // Guardar el changelog body ANTES de descargar/instalar para mostrarlo
-        // en el ChangelogModal post-relaunch. Fallo no crítico → warn y seguir.
+      onInstall: async ({ onPhaseChange, onProgress }) => {
+        // Guardar changelog body para mostrarlo post-relaunch
         try {
           await invoke("set_setting", {
             key: "pending_changelog_body",
@@ -54,17 +40,36 @@ export async function checkForUpdates(onUpdate: UpdaterCallback): Promise<void> 
           console.warn("[Updater] No se pudo guardar el changelog body:", err);
         }
 
-        // Descargar primero (sin bloquear la UI — no hay progreso granular aquí,
-        // pero separarlo de install() permite que el toast de "instalando" aparezca
-        // solo cuando el usuario lo confirma, y la descarga ya terminó).
-        await update.downloadAndInstall();
+        // Fase 1: descarga con progreso
+        onPhaseChange("downloading");
 
-        // relaunch() reinicia la app con la versión instalada
+        let contentLength = 0;
+        let downloaded = 0;
+
+        await update.download((event) => {
+          if (event.event === "Started") {
+            contentLength = event.data.contentLength ?? 0;
+          } else if (event.event === "Progress") {
+            downloaded += event.data.chunkLength;
+            if (contentLength > 0) {
+              onProgress(Math.round((downloaded / contentLength) * 100));
+            }
+          }
+          // "Finished" → pasamos a la siguiente fase
+        });
+
+        // Fase 2: instalación
+        onPhaseChange("installing");
+        await update.install();
+
+        // Fase 3: relaunch
+        onPhaseChange("relaunching");
+        // Pequeña pausa para que el usuario vea el estado "Reiniciando..."
+        await new Promise((r) => setTimeout(r, 800));
         await relaunch();
       },
     });
   } catch (err: unknown) {
-    // Silenciar errores de red o de endpoint inaccesible (builds de dev, offline, etc.)
     console.warn("[Updater] Error chequeando actualizaciones:", err);
   }
 }

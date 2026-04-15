@@ -253,7 +253,7 @@ interface SettingsModalProps {
   /** Fuerza la navegación al onboarding desde App.tsx (bypasea checks de cursos) */
   onForceOnboarding?: () => void;
   /** Notifica a App.tsx cuando hay una nueva versión disponible para instalar */
-  onUpdateFound?: (version: string, onInstall: () => Promise<void>) => void;
+  onUpdateFound?: (version: string, onInstall: (progress: import("../lib/updater").UpdaterProgressCallbacks) => Promise<void>) => void;
   /** Abre el StoragePreferenceModal desde MainLayout para cambiar la preferencia */
   onChangeStoragePreference?: () => void;
 }

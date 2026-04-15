@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import { BookOpen, ExternalLink, RefreshCw, Sparkles, Download } from "lucide-react";
-import { checkForUpdates, UPDATER_ENABLED } from "../../lib/updater";
+import { checkForUpdates, UPDATER_ENABLED, type UpdaterProgressCallbacks } from "../../lib/updater";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -16,7 +16,7 @@ interface AcercaSectionProps {
    * Llamado cuando se detecta una nueva versión disponible.
    * El caller (App.tsx via SettingsModal) maneja el toast/UI de instalación.
    */
-  onUpdateFound?: (version: string, onInstall: () => Promise<void>) => void;
+  onUpdateFound?: (version: string, onInstall: (progress: UpdaterProgressCallbacks) => Promise<void>) => void;
 }
 
 // ─── Componente ─────────────────────────────────────────────────────────────

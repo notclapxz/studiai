@@ -146,6 +146,13 @@ input {
   100% { bottom: 80%; height: 20% }
 }
 
+/* ── Barra de progreso indeterminada (update overlay) ────────── */
+@keyframes indeterminate-progress {
+  0%   { margin-left: -40%; width: 40% }
+  50%  { margin-left: 80%;  width: 40% }
+  100% { margin-left: 120%; width: 40% }
+}
+
 /* ── Settings modal animations ─────────────────────────────────── */
 @keyframes settings-backdrop-in {
   from { opacity: 0 }

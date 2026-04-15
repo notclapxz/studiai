@@ -18,6 +18,7 @@ import Database from "@tauri-apps/plugin-sql";
 import { AlertTriangle } from "lucide-react";
 import { checkForUpdates } from "./lib/updater";
 import { useToasts, ToastContainer } from "./components/Toast";
+import { UpdateProgressOverlay, type UpdatePhase } from "./components/UpdateProgressOverlay";
 import { ChangelogModal } from "./components/ChangelogModal";
 import "./App.css";
 
@@ -302,26 +303,35 @@ export function App() {
   const [showChangelog, setShowChangelog] = useState(false);
   const [changelogSkipVersionUpdate, setChangelogSkipVersionUpdate] = useState(false);
 
+  // ── Estado del overlay de progreso de update ─────────────────────────────
+  const [updateOverlay, setUpdateOverlay] = useState<{
+    visible: boolean;
+    phase: UpdatePhase;
+    percent: number;
+    version: string;
+  }>({ visible: false, phase: "downloading", percent: 0, version: "" });
+
   // ── Efecto: chequear actualizaciones al montar (una sola vez) ────────────
 
   useEffect(() => {
     checkForUpdates(({ version, onInstall }) => {
-      // Mostrar toast persistente con botón explícito — el usuario decide cuándo instalar.
-      // onInstall() descarga + instala + relanza; no se llama automáticamente.
       addToast({
         variant: "success",
-        message: `Nueva versión ${version} lista. ¿Instalar ahora?`,
-        duration: 0, // persistente hasta que el usuario decida
+        message: `Nueva versión ${version} disponible.`,
+        duration: 0,
         action: {
           label: "Instalar",
           onClick: () => {
-            addToast({
-              variant: "success",
-              message: "Instalando actualización...",
-              duration: 8000,
-            });
-            onInstall().catch((err: unknown) => {
+            // Mostrar overlay inmediatamente — no desaparece hasta el relaunch
+            setUpdateOverlay({ visible: true, phase: "downloading", percent: 0, version });
+            onInstall({
+              onPhaseChange: (phase) =>
+                setUpdateOverlay((prev) => ({ ...prev, phase })),
+              onProgress: (percent) =>
+                setUpdateOverlay((prev) => ({ ...prev, percent })),
+            }).catch((err: unknown) => {
               console.error("[Updater] Error instalando update:", err);
+              setUpdateOverlay((prev) => ({ ...prev, visible: false }));
               addToast({
                 variant: "error",
                 message: "Error al instalar la actualización. Reintenta más tarde.",
@@ -726,6 +736,16 @@ export function App() {
     />
   );
 
+  /** Overlay de progreso de update — z-index máximo, no se puede cerrar */
+  const updateOverlayEl = (
+    <UpdateProgressOverlay
+      visible={updateOverlay.visible}
+      phase={updateOverlay.phase}
+      downloadPercent={updateOverlay.percent > 0 ? updateOverlay.percent : undefined}
+      version={updateOverlay.version}
+    />
+  );
+
   if (showOfflineBanner) {
     return (
       <div className="flex flex-col h-screen">
@@ -740,6 +760,7 @@ export function App() {
         </div>
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
         {changelogOverlay}
+        {updateOverlayEl}
       </div>
     );
   }
@@ -757,6 +778,7 @@ export function App() {
         </div>
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
         {changelogOverlay}
+        {updateOverlayEl}
       </div>
     );
   }
@@ -766,6 +788,7 @@ export function App() {
       <MainLayout key={mainLayoutKey} onOpenChangelog={handleOpenChangelogManual} onForceOnboarding={() => setAppState("onboarding")} />
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       {changelogOverlay}
+      {updateOverlayEl}
     </>
   );
 }

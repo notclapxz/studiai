@@ -14,6 +14,7 @@ import { SettingsModal } from "../components/SettingsModal";
 import { PomodoroWidget } from "../components/PomodoroWidget";
 import { ToastContainer, useToasts } from "../components/Toast";
 import { StoragePreferenceModal } from "../components/StoragePreferenceModal";
+import { UpdateProgressOverlay } from "../components/UpdateProgressOverlay";
 import { useTimerStore } from "../store/timerStore";
 import { useCourses, useCourseDetail, useChatSessions, cleanCourseName } from "../hooks/useCanvasData";
 import { useChat } from "../hooks/useChat";
@@ -148,6 +149,14 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
 
   // ── Toast notifications ─────────────────────────────────────
   const { toasts, addToast, dismissToast } = useToasts();
+
+  // ── Estado overlay de update ─────────────────────────────────
+  const [updateOverlay, setUpdateOverlay] = useState<{
+    visible: boolean;
+    phase: import("../components/UpdateProgressOverlay").UpdatePhase;
+    percent: number;
+    version: string;
+  }>({ visible: false, phase: "downloading", percent: 0, version: "" });
 
   /** Guard: solo mostrar toast de indexación completa una vez por sesión de indexado */
   const indexToastShown = useRef(false);
@@ -558,18 +567,20 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
         onUpdateFound={(version, onInstall) => {
           addToast({
             variant: "success",
-            message: `Nueva versión ${version} lista. ¿Instalar ahora?`,
+            message: `Nueva versión ${version} disponible.`,
             duration: 0,
             action: {
               label: "Instalar",
               onClick: () => {
-                addToast({
-                  variant: "success",
-                  message: "Instalando actualización...",
-                  duration: 8000,
-                });
-                onInstall().catch((err: unknown) => {
+                setUpdateOverlay({ visible: true, phase: "downloading", percent: 0, version });
+                onInstall({
+                  onPhaseChange: (phase) =>
+                    setUpdateOverlay((prev) => ({ ...prev, phase })),
+                  onProgress: (percent) =>
+                    setUpdateOverlay((prev) => ({ ...prev, percent })),
+                }).catch((err: unknown) => {
                   console.error("[Updater] Error instalando update:", err);
+                  setUpdateOverlay((prev) => ({ ...prev, visible: false }));
                   addToast({
                     variant: "error",
                     message: "Error al instalar la actualización. Reintenta más tarde.",
@@ -595,6 +606,14 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
 
       {/* ── 8. Pomodoro Widget ─────────────────────────────────── */}
       {showPomodoro && <PomodoroWidget onClose={() => setShowPomodoro(false)} />}
+
+      {/* ── 9. Update progress overlay ────────────────────────── */}
+      <UpdateProgressOverlay
+        visible={updateOverlay.visible}
+        phase={updateOverlay.phase}
+        downloadPercent={updateOverlay.percent > 0 ? updateOverlay.percent : undefined}
+        version={updateOverlay.version}
+      />
     </div>
   );
 }

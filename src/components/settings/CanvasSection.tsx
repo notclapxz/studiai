@@ -266,18 +266,31 @@ export function CanvasSection({
         {/* Success message */}
         {verificationStatus === "success" && userInfo && !isSyncing && (
           <div
-            className="flex items-start gap-2 rounded-lg p-3"
+            className="flex items-center justify-between gap-3 rounded-lg p-3"
             style={{ background: "var(--success-subtle)", border: "1px solid rgba(127,216,143,0.25)" }}
           >
-            <CheckCircle size={14} className="mt-0.5 shrink-0" style={{ color: "var(--success)" }} />
-            <div>
-              <p className="text-xs font-medium" style={{ color: "var(--success)" }}>
-                Conectado exitosamente
-              </p>
-              <p className="text-xs mt-0.5" style={{ color: "var(--success)", opacity: 0.8 }}>
-                {userInfo.name ?? userInfo.display_name ?? userInfo.short_name}
-              </p>
+            <div className="flex items-start gap-2 min-w-0">
+              <CheckCircle size={14} className="mt-0.5 shrink-0" style={{ color: "var(--success)" }} />
+              <div className="min-w-0">
+                <p className="text-xs font-medium" style={{ color: "var(--success)" }}>
+                  Conectado exitosamente
+                </p>
+                <p className="text-xs mt-0.5 truncate" style={{ color: "var(--success)", opacity: 0.8 }}>
+                  {userInfo.name ?? userInfo.display_name ?? userInfo.short_name}
+                </p>
+              </div>
             </div>
+            {/* Botón siempre visible para forzar re-sync después de verificar */}
+            <button
+              onClick={onResync}
+              className="flex items-center gap-1 text-[11px] shrink-0 transition-opacity duration-150"
+              style={{ color: "var(--success)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+            >
+              <RefreshCw size={12} strokeWidth={1.5} />
+              {hasExistingSync ? "Re-sincronizar" : "Sincronizar"}
+            </button>
           </div>
         )}
 

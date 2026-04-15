@@ -4677,16 +4677,38 @@ async fn validate_and_save_canvas_token(
             }
         }
 
-        // DESPUÉS: limpiar DB (CASCADE en index_jobs via documents)
+        // DESPUÉS: limpiar DB en orden correcto (hijos antes que padres)
+        // Deshabilitamos FK constraints durante el cleanup para evitar errores
+        // de FK al borrar en lote — los rehabilitamos al terminar.
         let conn = open_db(&app)?;
+        conn.execute("PRAGMA foreign_keys = OFF", [])
+            .map_err(|e| format!("Error deshabilitando FK: {e}"))?;
+        // Tablas hijas primero
+        conn.execute("DELETE FROM index_jobs", [])
+            .map_err(|e| format!("Error limpiando index_jobs: {e}"))?;
+        conn.execute("DELETE FROM document_chunks", [])
+            .map_err(|e| format!("Error limpiando document_chunks: {e}"))?;
         conn.execute("DELETE FROM documents", [])
             .map_err(|e| format!("Error limpiando documents: {e}"))?;
-        conn.execute("DELETE FROM courses", [])
-            .map_err(|e| format!("Error limpiando courses: {e}"))?;
-        conn.execute("DELETE FROM chat_sessions", [])
-            .map_err(|e| format!("Error limpiando chat_sessions: {e}"))?;
+        conn.execute("DELETE FROM assignments", [])
+            .map_err(|e| format!("Error limpiando assignments: {e}"))?;
+        conn.execute("DELETE FROM announcements", [])
+            .map_err(|e| format!("Error limpiando announcements: {e}"))?;
         conn.execute("DELETE FROM chat_messages", [])
             .map_err(|e| format!("Error limpiando chat_messages: {e}"))?;
+        conn.execute("DELETE FROM chat_sessions", [])
+            .map_err(|e| format!("Error limpiando chat_sessions: {e}"))?;
+        conn.execute("DELETE FROM student_memory", [])
+            .map_err(|e| format!("Error limpiando student_memory: {e}"))?;
+        conn.execute("DELETE FROM tool_log", [])
+            .map_err(|e| format!("Error limpiando tool_log: {e}"))?;
+        conn.execute("DELETE FROM sync_jobs", [])
+            .map_err(|e| format!("Error limpiando sync_jobs: {e}"))?;
+        // Tabla padre al final
+        conn.execute("DELETE FROM courses", [])
+            .map_err(|e| format!("Error limpiando courses: {e}"))?;
+        conn.execute("PRAGMA foreign_keys = ON", [])
+            .map_err(|e| format!("Error rehabilitando FK: {e}"))?;
     }
 
     // 4. Normalizar URL y guardar settings

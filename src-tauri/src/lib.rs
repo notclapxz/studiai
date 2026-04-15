@@ -205,6 +205,14 @@ fn build_system_prompt(ctx: &RuntimeContext) -> String {
         out.push_str(course_ctx);
     }
 
+    // Instrucción de uso del sílabo — se activa cuando el CONTEXTO AUTOMATICO incluye el sílabo
+    out.push_str("\n\n## Uso del sílabo\n\n");
+    out.push_str("Si el CONTEXTO AUTOMATICO incluye un [Sílabo del curso], úsalo para:\n");
+    out.push_str("- Responder preguntas sobre el programa del curso, unidades, fechas de evaluaciones y prácticas SIN necesitar que el estudiante lo pida explícitamente\n");
+    out.push_str("- Al inicio del chat (primer mensaje), orientar brevemente al estudiante sobre el estado del curso según el sílabo (próximas evaluaciones, tema actual de la semana) en 1-2 líneas — sin dump completo\n");
+    out.push_str("- Si el estudiante pregunta 'cuándo es el examen' o 'qué entra en la práctica', consultar PRIMERO el sílabo inyectado antes de usar search_notes\n");
+    out.push_str("Si NO hay sílabo en el contexto, NO inventes fechas ni cronogramas — usá search_notes para buscar en los materiales del curso\n");
+
     // 4. Mini-prompt pedagógico según intent detectado en este turno
     // Conversational no agrega bloque extra — sin overhead innecesario
     let mini_prompt = match ctx.user_message_intent {
@@ -4579,7 +4587,7 @@ async fn generate_session_summary(
 //   2. Tareas próximas (deadlines en los próximos 7 días)
 //   3. Anuncios recientes de Canvas (últimos 3 días)
 
-async fn gather_async_attachments(app: &tauri::AppHandle) -> String {
+async fn gather_async_attachments(app: &tauri::AppHandle, active_course_id: Option<i64>) -> String {
     let mut attachments: Vec<String> = Vec::new();
 
     if let Ok(conn) = open_db(app) {
@@ -4652,6 +4660,59 @@ async fn gather_async_attachments(app: &tauri::AppHandle) -> String {
                     "[Anuncios recientes de Canvas]\n{}",
                     announcements.join("\n")
                 ));
+            }
+        }
+
+        // 4. Sílabo del curso activo — inyectar automáticamente al inicio de cada sesión.
+        // Detecta por título: silabo, sílabo, syllabus, programa del curso (case-insensitive).
+        // Lee los primeros 3 chunks (~2000 tokens) para dar contexto de fechas y evaluaciones
+        // sin saturar el contexto con el documento completo.
+        if let Some(course_id) = active_course_id {
+            let syllabus_query = "
+                SELECT d.id, d.title
+                FROM documents d
+                WHERE d.course_id = ?1
+                  AND d.has_embeddings = 1
+                  AND (
+                    lower(d.title) LIKE '%silabo%'
+                    OR lower(d.title) LIKE '%s%labos%'
+                    OR lower(d.title) LIKE '%syllabus%'
+                    OR lower(d.title) LIKE '%programa%curso%'
+                    OR lower(d.title) LIKE '%programa del curso%'
+                    OR lower(d.title) LIKE '%plan de estudios%'
+                  )
+                ORDER BY d.created_at ASC
+                LIMIT 1";
+
+            if let Ok(mut stmt) = conn.prepare(syllabus_query) {
+                let syllabus_doc = stmt.query_row(
+                    rusqlite::params![course_id],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                ).ok();
+
+                if let Some((doc_id, doc_title)) = syllabus_doc {
+                    // Leer primeros 3 chunks del sílabo
+                    if let Ok(mut chunk_stmt) = conn.prepare(
+                        "SELECT content FROM document_chunks
+                         WHERE document_id = ?1
+                         ORDER BY chunk_index ASC
+                         LIMIT 3"
+                    ) {
+                        let chunks: Vec<String> = chunk_stmt
+                            .query_map(rusqlite::params![doc_id], |row| row.get::<_, String>(0))
+                            .ok()
+                            .map(|rows| rows.filter_map(|r| r.ok()).collect())
+                            .unwrap_or_default();
+
+                        if !chunks.is_empty() {
+                            attachments.push(format!(
+                                "[Sílabo del curso: {}]\n{}",
+                                doc_title,
+                                chunks.join("\n\n")
+                            ));
+                        }
+                    }
+                }
             }
         }
     }
@@ -4763,7 +4824,8 @@ async fn send_chat_message(
         .collect();
 
     // ── 3. Async attachments — inyectar contexto automático ─────────────────
-    let attachments = gather_async_attachments(&app).await;
+    // Incluye: sesiones previas, tareas próximas, anuncios recientes, sílabo del curso activo
+    let attachments = gather_async_attachments(&app, active_course_id).await;
     let system_text = format!("{}{}", system_text, attachments);
 
     // ── 4. Ejecutar el loop agéntico ──────────────────────────────────────────

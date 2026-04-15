@@ -386,7 +386,7 @@ export function CanvasSection({
                   ? <span title={storageInfo.path} style={{ wordBreak: "break-all" }}>
                       Carpeta local: {storageInfo.path}
                     </span>
-                  : "Carpeta local — se asignará al primer sync"
+                  : "Carpeta predeterminada de la app"
               )}
               {(!storageInfo?.preference || storageInfo.preference === "") &&
                 "No configurado aún"}

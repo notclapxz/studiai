@@ -71,6 +71,33 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: StudiAI ${{ github.ref_name }}
           releaseBody: |
+            ## ¿Qué hay de nuevo?
+
+            ### 🎨 Diseño renovado
+            - Sistema de tokens de color unificado — toda la app usa una paleta consistente
+            - Nueva fuente **Geist** para mejor legibilidad
+            - Notificaciones rediseñadas con animaciones nativas
+
+            ### 🔄 Actualizaciones automáticas mejoradas
+            - El updater ya no instala solo — ahora te pregunta antes con un botón "Instalar"
+            - Nuevo botón "Buscar actualizaciones" en Configuración → Acerca de
+            - Corrección de bug crítico: `relaunch()` ahora funciona correctamente después de instalar
+
+            ### 📁 Control sobre tus archivos
+            - Al sincronizar por primera vez podés elegir dónde guardar tus materiales:
+              **Solo base de datos** (recomendado) o **Carpeta local** con el path que vos elegís
+            - Podés cambiar esta preferencia en Configuración → Canvas
+
+            ### 🧹 Limpieza automática de duplicados
+            - Los archivos duplicados de Canvas (ej: "matemáticas (1).pdf") se eliminan al sincronizar
+            - También se limpian archivos obsoletos que ya no existen en Canvas
+
+            ### 👤 Cambio de cuenta Canvas
+            - Si conectás una cuenta diferente, los archivos del usuario anterior se limpian automáticamente
+            - Si solo renovás el token (misma cuenta), no se borra nada
+
+            ---
+
             ## Instalación
 
             ### Windows
@@ -136,7 +163,7 @@ jobs:
             --arg tv "$TAURI_VERSION" \
             '{
               version: $version,
-              notes: "Nueva versión de StudiAI disponible.",
+              notes: "v0.12.0 — Diseño renovado, duplicados auto-eliminados, control de dónde guardar archivos, detección de cambio de cuenta Canvas.",
               pub_date: $pub_date,
               platforms: {
                 "darwin-aarch64": {

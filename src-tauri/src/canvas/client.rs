@@ -258,6 +258,49 @@ fn extract_next_url_from_headers(headers: &HeaderMap) -> Option<String> {
     extract_next_url(link_header)
 }
 
+/// Obtiene el usuario actual de Canvas y retorna su ID como String.
+/// Llama GET {base_url}/api/v1/users/self con el token dado.
+/// Retorna el canvas_user_id (campo "id" del JSON) o un error descriptivo.
+pub async fn get_current_user(base_url: &str, token: &str) -> Result<serde_json::Value, String> {
+    // Normalizar URL — quitar protocolo y trailing slash
+    let base = base_url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/');
+
+    let url = format!("https://{}/api/v1/users/self", base);
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Error al crear cliente HTTP: {e}"))?;
+
+    let response = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| format!("Error de red al contactar Canvas: {e}"))?;
+
+    match response.status().as_u16() {
+        200..=299 => {
+            let json: serde_json::Value = response
+                .json()
+                .await
+                .map_err(|e| format!("Error al parsear respuesta de Canvas: {e}"))?;
+            Ok(json)
+        }
+        401 => Err("Token inválido o expirado (401)".to_string()),
+        403 => Err("Acceso prohibido — token sin permisos suficientes (403)".to_string()),
+        404 => Err("Endpoint no encontrado — verifica la URL de Canvas (404)".to_string()),
+        code => {
+            let body = response.text().await.unwrap_or_default();
+            Err(format!("Error del servidor Canvas ({}): {}", code, body))
+        }
+    }
+}
+
 /// Parsea el header Link y retorna la URL con rel="next"
 pub fn extract_next_url(link_header: &str) -> Option<String> {
     for part in link_header.split(',') {

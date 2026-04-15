@@ -13,6 +13,7 @@ import { TasksPanel } from "../components/TasksPanel";
 import { SettingsModal } from "../components/SettingsModal";
 import { PomodoroWidget } from "../components/PomodoroWidget";
 import { ToastContainer, useToasts } from "../components/Toast";
+import { StoragePreferenceModal } from "../components/StoragePreferenceModal";
 import { useTimerStore } from "../store/timerStore";
 import { useCourses, useCourseDetail, useChatSessions, cleanCourseName } from "../hooks/useCanvasData";
 import { useChat } from "../hooks/useChat";
@@ -134,6 +135,11 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
   /** true cuando el widget de Pomodoro está visible */
   const [showPomodoro, setShowPomodoro] = useState(false);
 
+  /** true cuando el modal de storage preference está abierto */
+  const [showStorageModal, setShowStorageModal] = useState(false);
+  /** Cantidad de archivos pendientes cuando se abre el storage modal */
+  const [storageFileCount, setStorageFileCount] = useState(0);
+
   const { loadSettings } = useTimerStore();
 
   // ── Estado de descarga de archivos ───────────────────────────
@@ -163,6 +169,24 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
         // No bloquear al usuario — es una feature de conveniencia
         console.warn("[Deadlines] Error verificando deadlines:", err);
       });
+  }, []);
+
+  // ── Listener: canvas-storage-preference-required → abrir modal ────────
+  // Rust emite este evento cuando storage_preference no está configurada
+  // y hay archivos para descargar. El modal bloquea la descarga hasta elegir.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+
+    listen<{ file_count: number }>("canvas-storage-preference-required", (e) => {
+      setStorageFileCount(e.payload.file_count);
+      setShowStorageModal(true);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
   }, []);
 
   // ── Listener de progreso de indexado ────────────────────────
@@ -364,6 +388,18 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
 
   // ── Callbacks ────────────────────────────────────────────────
 
+  // ── Handlers del storage preference modal ───────────────────
+  async function handleStorageChooseDb() {
+    await invoke("set_storage_preference", { preference: "db_only" });
+    setShowStorageModal(false);
+  }
+
+  async function handleStorageChooseFolder() {
+    // El modal ya invocó set_storage_preference con local_folder + path
+    // Solo cerrar el modal
+    setShowStorageModal(false);
+  }
+
   function handleSelectCurso(id: string) {
     // Fire-and-forget: generar resumen de la sesión que se abandona
     const prevId = currentSessionIdRef.current;
@@ -514,6 +550,11 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
         initialSection={settingsSection}
         onOpenChangelog={onOpenChangelog}
         onForceOnboarding={onForceOnboarding}
+        onChangeStoragePreference={() => {
+          setShowSettings(false);
+          setSettingsSection(undefined);
+          setShowStorageModal(true);
+        }}
         onUpdateFound={(version, onInstall) => {
           addToast({
             variant: "success",
@@ -541,10 +582,18 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
         }}
       />
 
-      {/* ── 6. Toast notifications ────────────────────────────── */}
+      {/* ── 6. Storage Preference Modal ───────────────────────── */}
+      <StoragePreferenceModal
+        open={showStorageModal}
+        fileCount={storageFileCount}
+        onChooseDb={handleStorageChooseDb}
+        onChooseFolder={handleStorageChooseFolder}
+      />
+
+      {/* ── 7. Toast notifications ────────────────────────────── */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
 
-      {/* ── 7. Pomodoro Widget ─────────────────────────────────── */}
+      {/* ── 8. Pomodoro Widget ─────────────────────────────────── */}
       {showPomodoro && <PomodoroWidget onClose={() => setShowPomodoro(false)} />}
     </div>
   );

@@ -5,10 +5,11 @@
 
 use std::path::PathBuf;
 use std::time::Duration;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tokio::time::sleep;
 
 use super::classify::{classify_file, FileTier};
+use super::cleanup;
 use super::client::{CanvasClient, CanvasError};
 use super::models::{CanvasAnnouncement, CanvasAssignment, CanvasCourse, CanvasFile, CanvasModule};
 
@@ -76,6 +77,12 @@ enum SyncEvent {
         course_id: Option<i64>,
         #[serde(skip_serializing_if = "Option::is_none")]
         file_id: Option<i64>,
+    },
+    /// Resultado de la fase de limpieza post-descarga.
+    /// Informa al frontend cuántos duplicados y huérfanos se eliminaron.
+    CleanupDone {
+        duplicates_removed: usize,
+        orphans_removed: usize,
     },
 }
 
@@ -655,6 +662,44 @@ async fn run_metadata_sync(
 // Modo download
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Lee un valor de settings desde la DB usando el app handle de la ventana.
+fn read_setting(window: &tauri::Window, key: &str) -> Option<String> {
+    let app = window.app_handle();
+    let db_path = app
+        .path()
+        .app_data_dir()
+        .ok()?
+        .join("studyai.db");
+    let conn = rusqlite::Connection::open(&db_path).ok()?;
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = ?1",
+        [key],
+        |row| row.get::<_, String>(0),
+    ).ok().filter(|v| !v.is_empty())
+}
+
+/// Espera hasta 60s a que el usuario elija una preferencia de almacenamiento.
+/// Devuelve la preferencia elegida o error si expira el timeout.
+async fn wait_for_storage_preference(window: &tauri::Window) -> Result<String, String> {
+    const POLL_INTERVAL_MS: u64 = 200;
+    const MAX_WAIT_MS: u64 = 60_000;
+    let mut elapsed_ms: u64 = 0;
+
+    while elapsed_ms < MAX_WAIT_MS {
+        tokio::time::sleep(tokio::time::Duration::from_millis(POLL_INTERVAL_MS)).await;
+        elapsed_ms += POLL_INTERVAL_MS;
+
+        if let Some(pref) = read_setting(window, "storage_preference") {
+            if pref == "db_only" || pref == "local_folder" {
+                eprintln!("[canvas::sync] Preferencia elegida: {}", pref);
+                return Ok(pref);
+            }
+        }
+    }
+
+    Err("El usuario no eligió una preferencia de almacenamiento en 60 segundos. Sync abortado.".to_string())
+}
+
 async fn run_download_sync(
     client: &CanvasClient,
     window: &tauri::Window,
@@ -715,7 +760,6 @@ async fn run_download_sync(
         let cid = course.id;
         let cname = &course.name;
         let safe_course_name = sanitize_name(cname);
-        let course_dir = base_dir.join(&safe_course_name);
 
         emit_event(window, &SyncEvent::Progress {
             current: idx + 1,
@@ -795,6 +839,67 @@ async fn run_download_sync(
         stats.files_auto += auto_files.len();
 
         // Descargar archivos tier=auto
+        // Recolectar canvas_file_ids del sync actual para cleanup_orphans
+        let current_canvas_file_ids: Vec<i64> = auto_files
+            .iter()
+            .chain(manual_files.iter())
+            .map(|f| f.id)
+            .collect();
+
+        // ── Leer preferencia de almacenamiento ──────────────────────────
+        // Si no está configurada y hay archivos para descargar, emitir evento
+        // y esperar hasta 60s a que el usuario elija.
+        let storage_pref = if auto_files.is_empty() {
+            // Sin archivos para descargar — no necesitamos preferencia
+            "db_only".to_string()
+        } else {
+            match read_setting(window, "storage_preference") {
+                Some(p) if p == "db_only" || p == "local_folder" => p,
+                _ => {
+                    // No configurada — emitir evento y esperar
+                    eprintln!(
+                        "[canvas::sync] storage_preference no configurada, emitiendo evento con {} archivos",
+                        auto_files.len()
+                    );
+                    if let Err(e) = window.emit("canvas-storage-preference-required", serde_json::json!({
+                        "file_count": auto_files.len()
+                    })) {
+                        eprintln!("[canvas::sync] Error emitiendo canvas-storage-preference-required: {e}");
+                    }
+
+                    match wait_for_storage_preference(window).await {
+                        Ok(pref) => pref,
+                        Err(e) => {
+                            emit_event(window, &SyncEvent::Error {
+                                fatal: true,
+                                message: e.clone(),
+                            });
+                            return Err(e);
+                        }
+                    }
+                }
+            }
+        };
+
+        // Determinar directorio base de descarga según preferencia
+        let effective_base_dir = if storage_pref == "local_folder" {
+            match read_setting(window, "download_path") {
+                Some(p) if !p.is_empty() => PathBuf::from(p),
+                _ => {
+                    // Fallback: app_data_dir/downloads/
+                    window.app_handle()
+                        .path()
+                        .app_data_dir()
+                        .unwrap_or_else(|_| base_dir.clone())
+                        .join("downloads")
+                }
+            }
+        } else {
+            base_dir.clone()
+        };
+
+        let effective_course_dir = effective_base_dir.join(&safe_course_name);
+
         for f in &auto_files {
             if f.url.is_empty() {
                 eprintln!(
@@ -804,13 +909,28 @@ async fn run_download_sync(
                 continue;
             }
 
+            if storage_pref == "db_only" {
+                // Modo db_only: solo registrar metadata, no descargar binario.
+                // El indexer usa download_url directamente para extraer texto.
+                eprintln!("[canvas::sync] db_only: omitiendo descarga binaria de '{}'", f.name);
+                emit_event(window, &SyncEvent::DownloadDone {
+                    data: DownloadDonePayload {
+                        file_id: f.id,
+                        local_path: String::new(), // file_path = NULL
+                        cached: Some(false),
+                    },
+                });
+                continue;
+            }
+
+            // Modo local_folder: descarga normal
             let safe_name = sanitize_name(&f.name);
             // Incluir canvas_file_id en el nombre para evitar colisiones entre
             // dos archivos distintos con el mismo nombre sanitizado en el mismo
             // curso. Ej: "lecture.pdf" (id=123) y "lecture.pdf" (id=456) deben
             // resolverse como "123_lecture.pdf" y "456_lecture.pdf".
             let prefixed_name = format!("{}_{}", f.id, safe_name);
-            let dest_path = course_dir.join(&prefixed_name);
+            let dest_path = effective_course_dir.join(&prefixed_name);
 
             if dest_path.exists() {
                 // Ya descargado — emitir done sin re-descargar
@@ -828,6 +948,41 @@ async fn run_download_sync(
             stats.mb_downloaded += mb;
 
             download_file(client, f, &dest_path, window).await;
+        }
+
+        // Limpieza post-sync: duplicados y huérfanos
+        // Errores no abortan el sync — solo warn!
+        let app_handle = window.app_handle();
+        let app_data_dir = app_handle
+            .path()
+            .app_data_dir()
+            .unwrap_or_else(|_| base_dir.clone());
+
+        let db_path = app_data_dir.join("studyai.db");
+        if let Ok(conn) = rusqlite::Connection::open(&db_path) {
+            let dup_count = cleanup::cleanup_duplicates(&conn, cid, &app_data_dir)
+                .unwrap_or_else(|e| {
+                    log::warn!("[canvas::sync] Error cleanup duplicados (curso {}): {}", cid, e);
+                    0
+                });
+            let orphan_count = cleanup::cleanup_orphans(
+                &conn,
+                cid,
+                &current_canvas_file_ids,
+                &app_data_dir,
+            )
+            .unwrap_or_else(|e| {
+                log::warn!("[canvas::sync] Error cleanup huérfanos (curso {}): {}", cid, e);
+                0
+            });
+
+            // Emitir evento de cleanup al frontend
+            emit_event(window, &SyncEvent::CleanupDone {
+                duplicates_removed: dup_count,
+                orphans_removed: orphan_count,
+            });
+        } else {
+            log::warn!("[canvas::sync] No se pudo abrir DB para cleanup (curso {})", cid);
         }
     }
 

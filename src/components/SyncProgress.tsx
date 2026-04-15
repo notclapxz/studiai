@@ -45,7 +45,8 @@ export type SyncEventPayload =
       file_id?: number;
     }
   | { type: "rate_limited"; retry_after: number }
-  | { type: "process_done"; exit_code: number };
+  | { type: "process_done"; exit_code: number }
+  | { type: "cleanup_done"; duplicates_removed: number; orphans_removed: number };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 

@@ -4624,6 +4624,101 @@ async fn start_canvas_sync(
     Ok(())
 }
 
+/// Valida un token de Canvas, detecta cambio de usuario, limpia datos si es necesario,
+/// y guarda canvas_url, canvas_token y canvas_user_id en settings.
+///
+/// Lógica:
+/// 1. Llama GET /api/v1/users/self → obtiene canvas_user_id
+/// 2. Lee canvas_user_id previo de settings
+/// 3. Si usuario cambió (prev != "" && prev != nuevo): borra archivos físicos PRIMERO, luego limpia DB
+/// 4. Guarda canvas_url, canvas_token, canvas_user_id en settings
+/// 5. Retorna { ok, user_changed, canvas_user_id }
+#[tauri::command]
+async fn validate_and_save_canvas_token(
+    app: tauri::AppHandle,
+    canvas_url: String,
+    canvas_token: String,
+) -> Result<serde_json::Value, String> {
+    // 1. Validar token contra Canvas API y obtener user JSON
+    let user_json = canvas::client::get_current_user(&canvas_url, &canvas_token).await?;
+
+    // Extraer canvas_user_id del campo "id"
+    let new_user_id = user_json["id"]
+        .as_i64()
+        .map(|id| id.to_string())
+        .or_else(|| user_json["id"].as_str().map(|s| s.to_string()))
+        .ok_or_else(|| "Canvas no retornó un user ID válido".to_string())?;
+
+    // 2. Leer canvas_user_id previo de settings (vacío si no existe)
+    let prev_user_id: String = {
+        let conn = open_db(&app)?;
+        conn.query_row(
+            "SELECT value FROM settings WHERE key = 'canvas_user_id'",
+            [],
+            |row| row.get::<_, String>(0),
+        ).unwrap_or_default()
+    };
+
+    // 3. Detectar cambio de usuario
+    let user_changed = !prev_user_id.is_empty() && prev_user_id != new_user_id;
+
+    if user_changed {
+        // PRIMERO: borrar archivos físicos en downloads/ (archivos del usuario anterior)
+        let downloads_dir = app
+            .path()
+            .app_data_dir()
+            .map(|p| p.join("downloads"))
+            .map_err(|e| format!("No se pudo resolver app_data_dir: {e}"))?;
+
+        if downloads_dir.exists() {
+            if let Err(e) = std::fs::remove_dir_all(&downloads_dir) {
+                // No abortar — solo loguear y continuar
+                log::warn!("Error borrando downloads al cambiar usuario: {}", e);
+            }
+        }
+
+        // DESPUÉS: limpiar DB (CASCADE en index_jobs via documents)
+        let conn = open_db(&app)?;
+        conn.execute("DELETE FROM documents", [])
+            .map_err(|e| format!("Error limpiando documents: {e}"))?;
+        conn.execute("DELETE FROM courses", [])
+            .map_err(|e| format!("Error limpiando courses: {e}"))?;
+        conn.execute("DELETE FROM chat_sessions", [])
+            .map_err(|e| format!("Error limpiando chat_sessions: {e}"))?;
+        conn.execute("DELETE FROM chat_messages", [])
+            .map_err(|e| format!("Error limpiando chat_messages: {e}"))?;
+    }
+
+    // 4. Normalizar URL y guardar settings
+    let normalized_url = canvas_url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/')
+        .to_string();
+
+    let conn = open_db(&app)?;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('canvas_url', ?1)",
+        rusqlite::params![normalized_url],
+    ).map_err(|e| format!("Error guardando canvas_url: {e}"))?;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('canvas_token', ?1)",
+        rusqlite::params![canvas_token.trim()],
+    ).map_err(|e| format!("Error guardando canvas_token: {e}"))?;
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('canvas_user_id', ?1)",
+        rusqlite::params![new_user_id],
+    ).map_err(|e| format!("Error guardando canvas_user_id: {e}"))?;
+
+    // 5. Retornar resultado
+    Ok(serde_json::json!({
+        "ok": true,
+        "user_changed": user_changed,
+        "canvas_user_id": new_user_id,
+        "user": user_json
+    }))
+}
+
 /// Verifica un token de Canvas haciendo un request HTTP desde Rust (no desde el webview).
 ///
 /// Necesario porque Tauri 2 bloquea `fetch()` a dominios externos desde el webview por defecto.
@@ -4877,6 +4972,77 @@ fn check_upcoming_deadlines(app: tauri::AppHandle) -> Result<u32, String> {
     Ok(sent)
 }
 
+/// Lee la preferencia de almacenamiento de PDFs desde settings.
+/// Retorna { preference: "db_only" | "local_folder" | "", path: Option<String> }
+#[tauri::command]
+async fn get_storage_preference(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
+    let conn = open_db(&app)?;
+
+    let preference: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'storage_preference'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_default();
+
+    let path: Option<String> = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'download_path'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .ok()
+        .filter(|v| !v.is_empty());
+
+    Ok(serde_json::json!({
+        "preference": preference,
+        "path": path
+    }))
+}
+
+/// Guarda la preferencia de almacenamiento de PDFs en settings.
+/// preference: "db_only" | "local_folder"
+/// path: requerido si preference == "local_folder"
+#[tauri::command]
+async fn set_storage_preference(
+    app: tauri::AppHandle,
+    preference: String,
+    path: Option<String>,
+) -> Result<(), String> {
+    if preference != "db_only" && preference != "local_folder" {
+        return Err(format!(
+            "Preferencia inválida: '{}'. Debe ser 'db_only' o 'local_folder'.",
+            preference
+        ));
+    }
+
+    if preference == "local_folder" && path.as_deref().unwrap_or("").is_empty() {
+        return Err("Se requiere 'path' cuando la preferencia es 'local_folder'.".to_string());
+    }
+
+    let conn = open_db(&app)?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO settings (key, value) VALUES ('storage_preference', ?1)",
+        rusqlite::params![preference],
+    )
+    .map_err(|e| format!("Error guardando storage_preference: {e}"))?;
+
+    if preference == "local_folder" {
+        if let Some(ref p) = path {
+            conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES ('download_path', ?1)",
+                rusqlite::params![p],
+            )
+            .map_err(|e| format!("Error guardando download_path: {e}"))?;
+        }
+    }
+
+    eprintln!("[storage] Preferencia guardada: {} / path={:?}", preference, path);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -4892,6 +5058,8 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         // Plugin Notification — notificaciones nativas del SO (Pomodoro + deadlines)
         .plugin(tauri_plugin_notification::init())
+        // Plugin Dialog — selector de archivos/carpetas nativo del SO
+        .plugin(tauri_plugin_dialog::init())
         // Plugin SQL — SQLite con migraciones automáticas al iniciar
         .plugin(
             tauri_plugin_sql::Builder::default()
@@ -4925,6 +5093,7 @@ pub fn run() {
             set_setting,
             start_canvas_sync,
             verify_canvas_token,
+            validate_and_save_canvas_token,
             open_or_download_file,
             send_chat_message,
             resize_image_base64,
@@ -4934,7 +5103,9 @@ pub fn run() {
             cancel_background_index,
             get_index_status,
             generate_session_summary,
-            check_upcoming_deadlines
+            check_upcoming_deadlines,
+            get_storage_preference,
+            set_storage_preference
         ])
         .run(tauri::generate_context!())
         .expect("error al ejecutar la aplicación tauri");

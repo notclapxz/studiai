@@ -254,11 +254,13 @@ interface SettingsModalProps {
   onForceOnboarding?: () => void;
   /** Notifica a App.tsx cuando hay una nueva versión disponible para instalar */
   onUpdateFound?: (version: string, onInstall: () => Promise<void>) => void;
+  /** Abre el StoragePreferenceModal desde MainLayout para cambiar la preferencia */
+  onChangeStoragePreference?: () => void;
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, onForceOnboarding, onUpdateFound }: SettingsModalProps) {
+export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, onForceOnboarding, onUpdateFound, onChangeStoragePreference }: SettingsModalProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection ?? "cuenta");
 
   // Sincronizar activeSection cuando cambia initialSection al abrir el modal
@@ -278,6 +280,7 @@ export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, 
   const [userInfo, setUserInfo] = useState<CanvasUserInfo | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [userChanged, setUserChanged] = useState(false);
   const [syncProgress, setSyncProgress] = useState<SyncProgress>(INITIAL_SYNC_PROGRESS);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [trustMode, setTrustMode] = useState(true);
@@ -439,6 +442,24 @@ export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, 
             };
           }
           return prev;
+        case "cleanup_done": {
+          const cleanupSteps: string[] = [];
+          if (payload.duplicates_removed > 0) {
+            cleanupSteps.push(
+              `${payload.duplicates_removed} duplicado${payload.duplicates_removed !== 1 ? "s" : ""} eliminado${payload.duplicates_removed !== 1 ? "s" : ""}`
+            );
+          }
+          if (payload.orphans_removed > 0) {
+            cleanupSteps.push(
+              `${payload.orphans_removed} archivo${payload.orphans_removed !== 1 ? "s" : ""} obsoleto${payload.orphans_removed !== 1 ? "s" : ""} eliminado${payload.orphans_removed !== 1 ? "s" : ""}`
+            );
+          }
+          if (cleanupSteps.length === 0) return prev;
+          return {
+            ...prev,
+            completedSteps: [...prev.completedSteps, ...cleanupSteps],
+          };
+        }
         default:
           return prev;
       }
@@ -535,33 +556,31 @@ export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, 
     }
 
     setVerificationStatus("loading");
+    setIsSaving(true);
     setErrorMessage("");
     setUserInfo(null);
+    setUserChanged(false);
 
     try {
-      const data = await invoke<CanvasUserInfo>("verify_canvas_token", {
+      const result = await invoke<{
+        ok: boolean;
+        user_changed: boolean;
+        canvas_user_id: string;
+        user: CanvasUserInfo;
+      }>("validate_and_save_canvas_token", {
         canvasUrl: canvasUrl.trim(),
-        token: canvasToken.trim(),
+        canvasToken: canvasToken.trim(),
       });
-      setUserInfo(data);
+
+      setUserInfo(result.user);
       setVerificationStatus("success");
-      await saveToDatabase();
+      if (result.user_changed) {
+        setUserChanged(true);
+      }
       await startSync(canvasUrl, canvasToken);
     } catch (err: unknown) {
       setVerificationStatus("error");
       setErrorMessage(err instanceof Error ? err.message : String(err));
-    }
-  }
-
-  async function saveToDatabase() {
-    setIsSaving(true);
-    try {
-      const db = await Database.load("sqlite:studyai.db");
-      const normalizedUrl = normalizeCanvasUrl(canvasUrl);
-      await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('canvas_url', $1)", [normalizedUrl]);
-      await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('canvas_token', $1)", [
-        canvasToken.trim(),
-      ]);
     } finally {
       setIsSaving(false);
     }
@@ -735,6 +754,8 @@ export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, 
                 showSyncPanel={showSyncPanel}
                 hasExistingSync={hasExistingSync}
                 isSyncing={isSyncing}
+                userChanged={userChanged}
+                onChangeStoragePreference={onChangeStoragePreference}
                 onCanvasUrlChange={setCanvasUrl}
                 onCanvasTokenChange={setCanvasToken}
                 onShowTokenChange={setShowToken}

@@ -492,5 +492,25 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        // Migración 13 — Canvas user ID para detectar cambio de usuario
+        // Permite comparar el usuario actual con el guardado y limpiar datos al cambiar
+        Migration {
+            version: 13,
+            description: "add_canvas_user_id_setting",
+            sql: "INSERT OR IGNORE INTO settings (key, value) VALUES ('canvas_user_id', '');",
+            kind: MigrationKind::Up,
+        },
+        // Migración 14 — Storage preference: dónde guardar los PDFs descargados de Canvas
+        // storage_preference: "db_only" | "local_folder" | "" (no elegido aún)
+        // download_path: path absoluto de la carpeta local (solo si storage_preference = "local_folder")
+        Migration {
+            version: 14,
+            description: "storage_preference_settings",
+            sql: "
+                INSERT OR IGNORE INTO settings (key, value) VALUES ('storage_preference', '');
+                INSERT OR IGNORE INTO settings (key, value) VALUES ('download_path', '');
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }

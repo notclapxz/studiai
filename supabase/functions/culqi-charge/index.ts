@@ -28,6 +28,7 @@ interface CulqiChargeResponse {
 
 interface UserRecord {
   plan: string | null;
+  plan_type: string | null;
   plan_expires_at: string | null;
 }
 
@@ -60,24 +61,27 @@ Deno.serve(async (req: Request) => {
 
     const config = PLAN_CONFIG[plan];
 
-    // 3. Idempotency: check if user already has active pro plan
+    // 3. Idempotency: check if user already has active pro plan of SAME type
     const { data: existing } = await supabase
       .schema("studiai")
       .from("users")
-      .select("plan, plan_expires_at")
+      .select("plan, plan_type, plan_expires_at")
       .eq("id", user.id)
       .single<UserRecord>();
 
     if (existing?.plan === "pro" && existing?.plan_expires_at) {
       const expiresAt = new Date(existing.plan_expires_at);
-      if (expiresAt > new Date()) {
+      if (expiresAt > new Date() && existing.plan_type === plan) {
         return json({
           ok: true,
           plan: "pro",
+          plan_type: existing.plan_type,
           expires_at: existing.plan_expires_at,
           already_active: true,
         });
       }
+      // Si es upgrade (mensual -> trimestral), no se bloquea; se procede con el cobro.
+      // El precio prorrateado se calcula y envía desde el frontend.
     }
 
     // 4. Charge via Culqi API
@@ -104,7 +108,7 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: msg }, 402);
     }
 
-    // 5. Update user plan in DB
+    // 5. Calculate expiry date starting from today
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + config.days);
 
@@ -113,6 +117,7 @@ Deno.serve(async (req: Request) => {
       .from("users")
       .update({
         plan: "pro",
+        plan_type: plan,
         plan_expires_at: expiresAt.toISOString(),
         culqi_customer_id: charge.id,
         updated_at: new Date().toISOString(),
@@ -124,7 +129,7 @@ Deno.serve(async (req: Request) => {
       return json({ ok: false, error: "db_error" }, 500);
     }
 
-    return json({ ok: true, plan: "pro", expires_at: expiresAt.toISOString() });
+    return json({ ok: true, plan: "pro", plan_type: plan, expires_at: expiresAt.toISOString() });
 
   } catch (err) {
     console.error("[culqi-charge] Unexpected error:", err);

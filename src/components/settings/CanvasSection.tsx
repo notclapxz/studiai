@@ -1,6 +1,6 @@
 // CanvasSection.tsx — Sección de configuración de Canvas en SettingsModal
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Eye,
   EyeOff,
@@ -11,7 +11,9 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
+  AlertTriangle,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { SyncProgressPanel } from "../SyncProgress";
 import type { SyncProgress } from "../SyncProgress";
 
@@ -28,6 +30,11 @@ type VerificationStatus = "idle" | "loading" | "success" | "error";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
+interface StoragePreferenceInfo {
+  preference: string; // "db_only" | "local_folder" | ""
+  path?: string | null;
+}
+
 interface CanvasSectionProps {
   canvasUrl: string;
   canvasToken: string;
@@ -41,6 +48,10 @@ interface CanvasSectionProps {
   showSyncPanel: boolean;
   hasExistingSync: boolean;
   isSyncing: boolean;
+  /** Indica que el guardado detectó un cambio de usuario Canvas — muestra banner de limpieza */
+  userChanged?: boolean;
+  /** Callback para abrir el StoragePreferenceModal desde MainLayout */
+  onChangeStoragePreference?: () => void;
   onCanvasUrlChange: (value: string) => void;
   onCanvasTokenChange: (value: string) => void;
   onShowTokenChange: (value: boolean) => void;
@@ -66,6 +77,8 @@ export function CanvasSection({
   showSyncPanel,
   hasExistingSync,
   isSyncing,
+  userChanged = false,
+  onChangeStoragePreference,
   onCanvasUrlChange,
   onCanvasTokenChange,
   onShowTokenChange,
@@ -76,6 +89,26 @@ export function CanvasSection({
   formatLastSync,
 }: CanvasSectionProps) {
   const [showInstructions, setShowInstructions] = useState(false);
+  const [showUserChangedBanner, setShowUserChangedBanner] = useState(false);
+  const [storageInfo, setStorageInfo] = useState<StoragePreferenceInfo | null>(null);
+
+  // Mostrar banner de cambio de usuario durante 5s cuando userChanged pasa a true
+  useEffect(() => {
+    if (userChanged) {
+      setShowUserChangedBanner(true);
+      const timer = setTimeout(() => setShowUserChangedBanner(false), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [userChanged]);
+
+  // Cargar preferencia de almacenamiento al montar
+  useEffect(() => {
+    invoke<{ preference: string; path?: string | null }>("get_storage_preference")
+      .then((info) => setStorageInfo(info))
+      .catch((err: unknown) => {
+        console.warn("[CanvasSection] Error leyendo storage_preference:", err);
+      });
+  }, []);
 
   return (
     <div className="space-y-4 animate-fade-in">
@@ -92,6 +125,37 @@ export function CanvasSection({
           onGoToCourses={onClose}
           onRetry={onResync}
         />
+      )}
+
+      {/* Banner: cambio de usuario detectado */}
+      {showUserChangedBanner && (
+        <div
+          className="rounded-xl p-3 flex items-start gap-2"
+          style={{
+            background: "var(--warning-subtle, rgba(255,180,0,0.12))",
+            border: "1px solid rgba(255,180,0,0.3)",
+          }}
+        >
+          <AlertTriangle size={14} className="mt-0.5 shrink-0" style={{ color: "var(--warning, #f59e0b)" }} />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium" style={{ color: "var(--warning, #f59e0b)" }}>
+              Usuario cambiado
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--text-weak)" }}>
+              Los datos del usuario anterior fueron eliminados
+            </p>
+          </div>
+          <button
+            onClick={() => setShowUserChangedBanner(false)}
+            className="shrink-0 text-[10px] transition-opacity duration-150"
+            style={{ color: "var(--text-ghost)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+            aria-label="Cerrar aviso"
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       {/* Last sync banner */}
@@ -303,6 +367,43 @@ export function CanvasSection({
             )}
           </div>
         )}
+      </div>
+
+      {/* Sección: Almacenamiento de materiales */}
+      <div
+        className="rounded-xl p-3"
+        style={{ background: "var(--bg-surface-active)", border: "1px solid var(--border-ui)" }}
+      >
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-medium" style={{ color: "var(--text-strong)" }}>
+              Almacenamiento de materiales
+            </p>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--text-weak)" }}>
+              {storageInfo?.preference === "db_only" && "Solo base de datos"}
+              {storageInfo?.preference === "local_folder" &&
+                `Carpeta local${storageInfo.path ? `: ${storageInfo.path}` : ""}`}
+              {(!storageInfo?.preference || storageInfo.preference === "") &&
+                "No configurado aún"}
+            </p>
+            {storageInfo?.preference && (
+              <p className="text-[10px] mt-0.5" style={{ color: "var(--text-ghost)" }}>
+                Aplica a descargas futuras
+              </p>
+            )}
+          </div>
+          {onChangeStoragePreference && (
+            <button
+              onClick={onChangeStoragePreference}
+              className="text-[11px] transition-opacity duration-150 shrink-0"
+              style={{ color: "var(--accent)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+            >
+              Cambiar
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Privacy note */}

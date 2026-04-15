@@ -220,7 +220,7 @@ export function ChatInput({
       {effectiveImages.length > 0 && (
         <div
           className="flex items-center gap-2 px-3 py-2 rounded-lg mb-2 flex-wrap"
-          style={{ background: "#252525", border: "1px solid #4b4c5c" }}
+          style={{ background: "var(--bg-surface-active)", border: "1px solid var(--border-ui)" }}
         >
           {effectiveImages.map((img, idx) => (
             <div key={idx} className="relative shrink-0">
@@ -232,7 +232,7 @@ export function ChatInput({
               <button
                 onClick={() => clearImage(idx)}
                 className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center outline-none"
-                style={{ background: "#e06c75", color: "white" }}
+                style={{ background: "var(--error)", color: "var(--text-strong)" }}
                 title="Quitar imagen"
                 aria-label={`Quitar imagen ${idx + 1}`}
               >
@@ -243,13 +243,13 @@ export function ChatInput({
           <div className="flex flex-col gap-0.5 min-w-0 flex-1">
             <span
               className="text-xs flex items-center gap-1"
-              style={{ color: "#6a6a6a" }}
+              style={{ color: "var(--text-weak)" }}
             >
               <ImageIcon size={10} strokeWidth={1.5} />
               {effectiveImages.length} imagen{effectiveImages.length > 1 ? "es" : ""} adjunta{effectiveImages.length > 1 ? "s" : ""}
             </span>
             {effectiveImages.length >= 5 && (
-              <span className="text-xs" style={{ color: "#e06c75" }}>
+              <span className="text-xs" style={{ color: "var(--error)" }}>
                 Maximo 5 imagenes
               </span>
             )}
@@ -262,8 +262,8 @@ export function ChatInput({
         className="flex items-end gap-2 rounded-xl px-3 py-2"
         style={{
           background: "var(--bg-surface-hover)",
-          border: isDragging
-            ? "2px dashed rgba(250,178,131,0.5)"
+            border: isDragging
+            ? "2px dashed var(--accent-warm-dim)"
             : "1px solid var(--border-base)",
           transition: "border-color 0.15s",
         }}

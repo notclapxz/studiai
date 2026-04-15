@@ -26,7 +26,11 @@ interface AuthStore {
   loading: boolean;
   /** Estado de la licencia del usuario */
   licenseStatus: LicenseStatus;
-  /** Dias restantes de la prueba gratuita */
+  /** Tipo de plan activo: "mensual" | "trimestral" | null */
+  planType: "mensual" | "trimestral" | null;
+  /** Fecha ISO de expiración del plan activo (pro o trial) */
+  planExpiresAt: string | null;
+  /** Dias restantes de la prueba gratuita o del plan pro */
   daysRemaining: number;
   /** Timestamp (ms) de la ultima verificacion exitosa online */
   lastCheckedAt: number;
@@ -58,6 +62,7 @@ interface AuthStore {
    */
   setLicenseFromRpc: (license: {
     plan: string;
+    plan_type?: string | null;
     is_active: boolean;
     expires_at: string | null;
     days_remaining: number;
@@ -91,6 +96,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   user: null,
   loading: true, // Inicia en true hasta verificar sesion
   licenseStatus: "loading",
+  planType: null,
+  planExpiresAt: null,
   daysRemaining: 14,
   lastCheckedAt: 0,
   licenseVerifiedAt: null,
@@ -122,10 +129,17 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         const result = typeof data === "string" ? JSON.parse(data) : data;
         const status: LicenseStatus = result.plan as LicenseStatus;
         const days: number = result.days_remaining ?? 0;
+        const planType: "mensual" | "trimestral" | null =
+          result.plan_type === "mensual" || result.plan_type === "trimestral"
+            ? result.plan_type
+            : null;
+        const planExpiresAt: string | null = result.expires_at ?? null;
         const now = Date.now();
 
         set({
           licenseStatus: status,
+          planType,
+          planExpiresAt,
           daysRemaining: days,
           lastCheckedAt: now,
           licenseVerifiedAt: now,
@@ -146,6 +160,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           await db.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('days_remaining', $1)",
             [String(days)]
+          );
+          await db.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('plan_type', $1)",
+            [planType ?? ""]
+          );
+          await db.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('plan_expires_at', $1)",
+            [planExpiresAt ?? ""]
           );
         } catch (cacheErr) {
           console.warn("[License] Error cacheando en SQLite:", cacheErr);
@@ -176,21 +198,27 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         const cachedStatus = statusRows[0]?.value as LicenseStatus | undefined;
         const cachedDays = parseInt(daysRows[0]?.value ?? "0", 10);
 
+        // Leer plan_type y plan_expires_at del cache
+        const planTypeRows = await db.select<{ value: string }[]>(
+          "SELECT value FROM settings WHERE key = 'plan_type' LIMIT 1"
+        );
+        const planExpiresAtRows = await db.select<{ value: string }[]>(
+          "SELECT value FROM settings WHERE key = 'plan_expires_at' LIMIT 1"
+        );
+        const cachedPlanType =
+          planTypeRows[0]?.value === "mensual" || planTypeRows[0]?.value === "trimestral"
+            ? (planTypeRows[0].value as "mensual" | "trimestral")
+            : null;
+        const cachedPlanExpiresAt = planExpiresAtRows[0]?.value || null;
+
         if (checkedAt && cachedStatus) {
           const verifiedAtMs = new Date(checkedAt).getTime();
 
-          // SOFT FALLBACK:
-          // Ya NO marcamos "expired" duro por tener el cache viejo. El servidor
-          // es la fuente de verdad del estado "expired", no el reloj local.
-          //
-          // Si la ultima verificacion conocida era "expired", respetamos eso
-          // (bloqueo permanece). Para cualquier otro status cacheado (trial/pro)
-          // mostramos el estado cacheado y dejamos que la UI indique "sin
-          // conexion, verificacion pendiente" via `licenseFromCache` +
-          // `licenseVerifiedAt`. El usuario no queda bloqueado por estar offline.
           if (cachedStatus === "expired") {
             set({
               licenseStatus: "expired",
+              planType: null,
+              planExpiresAt: null,
               daysRemaining: 0,
               licenseVerifiedAt: verifiedAtMs,
               licenseFromCache: true,
@@ -198,6 +226,8 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
           } else {
             set({
               licenseStatus: cachedStatus,
+              planType: cachedPlanType,
+              planExpiresAt: cachedPlanExpiresAt,
               daysRemaining: cachedDays,
               licenseVerifiedAt: verifiedAtMs,
               licenseFromCache: true,
@@ -207,21 +237,20 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         }
 
         // Sin cache y sin red: FAIL-SECURE.
-        // Antes defaulteaba a { trial, 14 dias } — permisivo, permitia spoofear
-        // un trial fresco indefinidamente rompiendo red + cache. Ahora marcamos
-        // "unknown" y la UI gatea las features de IA hasta que el check online
-        // resuelva. Lectura offline (cursos, tareas, calendario) sigue disponible.
         set({
           licenseStatus: "unknown",
+          planType: null,
+          planExpiresAt: null,
           daysRemaining: 0,
           licenseVerifiedAt: null,
           licenseFromCache: false,
         });
       } catch (dbErr) {
         console.error("[License] Error leyendo cache SQLite:", dbErr);
-        // Fallo total de cache + red: igual que arriba, fail-secure.
         set({
           licenseStatus: "unknown",
+          planType: null,
+          planExpiresAt: null,
           daysRemaining: 0,
           licenseVerifiedAt: null,
           licenseFromCache: false,
@@ -231,26 +260,29 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   setLicenseFromRpc: (license) => {
-    // Mapear `plan` al tipo LicenseStatus. El servidor puede devolver
-    // "trial" | "pro" | "expired" (alineado con studiai.check_license).
     const plan = license?.plan as LicenseStatus | undefined;
     const status: LicenseStatus =
       plan === "trial" || plan === "pro" || plan === "expired"
         ? plan
         : "unknown";
     const days = Math.max(0, Math.floor(license?.days_remaining ?? 0));
+    const planType: "mensual" | "trimestral" | null =
+      license.plan_type === "mensual" || license.plan_type === "trimestral"
+        ? license.plan_type
+        : null;
+    const planExpiresAt: string | null = license?.expires_at ?? null;
     const now = Date.now();
 
     set({
       licenseStatus: status,
+      planType,
+      planExpiresAt,
       daysRemaining: days,
       lastCheckedAt: now,
       licenseVerifiedAt: now,
       licenseFromCache: false,
     });
 
-    // Cachear en SQLite para mantener consistencia con checkLicense().
-    // Best-effort: no bloqueamos si falla.
     void (async () => {
       try {
         const db = await Database.load("sqlite:studyai.db");
@@ -265,6 +297,14 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         await db.execute(
           "INSERT OR REPLACE INTO settings (key, value) VALUES ('days_remaining', $1)",
           [String(days)]
+        );
+        await db.execute(
+          "INSERT OR REPLACE INTO settings (key, value) VALUES ('plan_type', $1)",
+          [planType ?? ""]
+        );
+        await db.execute(
+          "INSERT OR REPLACE INTO settings (key, value) VALUES ('plan_expires_at', $1)",
+          [planExpiresAt ?? ""]
         );
       } catch (cacheErr) {
         console.warn("[License] Error cacheando RPC license en SQLite:", cacheErr);
@@ -315,21 +355,20 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   },
 
   resetLicenseCache: async () => {
-    // Limpiar estado en memoria inmediatamente para evitar flash del estado
-    // del usuario anterior mientras el signOut se procesa.
     set({
       licenseStatus: "loading",
+      planType: null,
+      planExpiresAt: null,
       daysRemaining: 0,
       lastCheckedAt: 0,
       licenseVerifiedAt: null,
       licenseFromCache: false,
     });
 
-    // Limpiar cache SQLite (best-effort: si falla no bloquea el logout).
     try {
       const db = await Database.load("sqlite:studyai.db");
       await db.execute(
-        "DELETE FROM settings WHERE key IN ('license_status', 'license_checked_at', 'days_remaining')"
+        "DELETE FROM settings WHERE key IN ('license_status', 'license_checked_at', 'days_remaining', 'plan_type', 'plan_expires_at')"
       );
     } catch (err) {
       console.warn("[License] Error limpiando cache SQLite en logout:", err);

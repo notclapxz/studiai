@@ -136,17 +136,17 @@ function ItemChat({ chat, activo, onSelect, onDelete }: ItemChatProps) {
       </div>
       <span
         className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-100 cursor-pointer"
-        style={{ color: "#6a6a6a" }}
+        style={{ color: "var(--text-weak)" }}
         title="Eliminar chat"
         onClick={(e) => {
           e.stopPropagation();
           onDelete(chat.id);
         }}
         onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.color = "#e06c75";
+          (e.currentTarget as HTMLElement).style.color = "var(--error)";
         }}
         onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.color = "#6a6a6a";
+          (e.currentTarget as HTMLElement).style.color = "var(--text-weak)";
         }}
       >
         <Trash2 size={14} strokeWidth={1.5} />

@@ -514,6 +514,31 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
         initialSection={settingsSection}
         onOpenChangelog={onOpenChangelog}
         onForceOnboarding={onForceOnboarding}
+        onUpdateFound={(version, onInstall) => {
+          addToast({
+            variant: "success",
+            message: `Nueva versión ${version} lista. ¿Instalar ahora?`,
+            duration: 0,
+            action: {
+              label: "Instalar",
+              onClick: () => {
+                addToast({
+                  variant: "success",
+                  message: "Instalando actualización...",
+                  duration: 8000,
+                });
+                onInstall().catch((err: unknown) => {
+                  console.error("[Updater] Error instalando update:", err);
+                  addToast({
+                    variant: "error",
+                    message: "Error al instalar la actualización. Reintenta más tarde.",
+                    duration: 5000,
+                  });
+                });
+              },
+            },
+          });
+        }}
       />
 
       {/* ── 6. Toast notifications ────────────────────────────── */}

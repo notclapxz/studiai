@@ -43,7 +43,7 @@ export function Login({ onLogin: _onLogin }: LoginProps) {
           // no está registrado en el OS hasta que la app esté empaquetada.
           // Vite corre en :1420, así que el browser puede volver a esa URL
           // y Supabase detecta el hash con los tokens automáticamente.
-          redirectTo: "https://studiai.clapxz.com/auth/callback",
+          redirectTo: "https://get.studiai.clapxz.com/auth/callback",
           // Pedir scopes mínimos necesarios
           scopes: "openid email profile",
           // CLAVE: no redirigir dentro de la WebView — solo obtener la URL

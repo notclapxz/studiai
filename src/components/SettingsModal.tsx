@@ -252,11 +252,13 @@ interface SettingsModalProps {
   onOpenChangelog?: () => void;
   /** Fuerza la navegación al onboarding desde App.tsx (bypasea checks de cursos) */
   onForceOnboarding?: () => void;
+  /** Notifica a App.tsx cuando hay una nueva versión disponible para instalar */
+  onUpdateFound?: (version: string, onInstall: () => Promise<void>) => void;
 }
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, onForceOnboarding }: SettingsModalProps) {
+export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, onForceOnboarding, onUpdateFound }: SettingsModalProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection ?? "cuenta");
 
   // Sincronizar activeSection cuando cambia initialSection al abrir el modal
@@ -608,9 +610,9 @@ export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, 
       <div
         className={cn("settings-modal-content flex overflow-hidden", closing && "settings-modal-content-out")}
         style={{
-          background: "#212121",
-          borderRadius: 16,
-          border: "1px solid #4b4c5c",
+          background: "var(--bg-modal)",
+          borderRadius: "var(--radius-xl)",
+          border: "1px solid var(--border-ui)",
           maxWidth: 560,
           width: "92vw",
           maxHeight: "80vh",
@@ -623,13 +625,13 @@ export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, 
           className="flex flex-col shrink-0 py-4 px-2 gap-1"
           style={{
             width: 140,
-            background: "#1a1a1a",
-            borderRight: "1px solid #4b4c5c",
+            background: "var(--bg-modal-nav)",
+            borderRight: "1px solid var(--border-ui)",
           }}
         >
           <p
             className="text-[11px] font-semibold uppercase tracking-wider px-2 mb-2"
-            style={{ color: "#6a6a6a" }}
+            style={{ color: "var(--text-weak)" }}
           >
             Ajustes
           </p>
@@ -640,12 +642,12 @@ export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, 
               className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-[13px] font-medium transition-colors duration-100 text-left w-full"
               style={
                 activeSection === s.key
-                  ? { background: "#fab283", color: "#1a1a1a" }
-                  : { color: "#e0e0e0" }
+                  ? { background: "var(--accent-warm)", color: "var(--bg-modal)" }
+                  : { color: "var(--text-strong)" }
               }
               onMouseEnter={(e) => {
                 if (activeSection !== s.key) {
-                  (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.06)";
+                  (e.currentTarget as HTMLElement).style.background = "var(--border-base)";
                 }
               }}
               onMouseLeave={(e) => {
@@ -665,22 +667,22 @@ export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, 
           {/* Header with close button */}
           <div
             className="flex items-center justify-between px-5 py-3 shrink-0"
-            style={{ borderBottom: "1px solid rgba(75,76,92,0.5)" }}
+            style={{ borderBottom: "1px solid var(--border-ui)" }}
           >
-            <h2 className="text-sm font-semibold" style={{ color: "#e0e0e0" }}>
+            <h2 className="text-sm font-semibold" style={{ color: "var(--text-strong)" }}>
               {sections.find((s) => s.key === activeSection)?.label}
             </h2>
             <button
               onClick={handleClose}
               className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors duration-100"
-              style={{ color: "#6a6a6a" }}
+              style={{ color: "var(--text-weak)" }}
               onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.08)";
-                (e.currentTarget as HTMLElement).style.color = "#e0e0e0";
+                (e.currentTarget as HTMLElement).style.background = "var(--border-base)";
+                (e.currentTarget as HTMLElement).style.color = "var(--text-strong)";
               }}
               onMouseLeave={(e) => {
                 (e.currentTarget as HTMLElement).style.background = "transparent";
-                (e.currentTarget as HTMLElement).style.color = "#6a6a6a";
+                (e.currentTarget as HTMLElement).style.color = "var(--text-weak)";
               }}
               aria-label="Cerrar configuracion"
             >
@@ -767,6 +769,7 @@ export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, 
                 onOpenChangelog={onOpenChangelog}
                 onClose={handleClose}
                 onForceOnboarding={onForceOnboarding}
+                onUpdateFound={onUpdateFound}
               />
             )}
           </div>

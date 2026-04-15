@@ -32,11 +32,8 @@ export interface Mensaje {
   /** Lista de herramientas invocadas durante la generación de este mensaje */
   toolInvocations?: ToolInvocation[];
   /**
-   * Resúmenes del razonamiento del modelo (thinking-visible 2026-04-10).
-   * Se llenan desde el evento `chat-stream-thought` durante el streaming.
-   * Decisión: EFÍMEROS — no se persisten en SQLite (pueden ser muy largos,
-   * rara vez se revisan después, evita migración de DB). Al recargar la página,
-   * los mensajes antiguos no tendrán thoughts.
+   * Resúmenes del razonamiento del modelo (thinking-visible).
+   * Efímeros — no se persisten en SQLite.
    */
   thoughts?: string[];
   /** Si presente, el mensaje es un error y se renderiza con estilo especial */
@@ -100,26 +97,25 @@ function ToolIndicators({ invocations, streaming }: ToolIndicatorsProps) {
         <div className="flex flex-col gap-1">
           {invocations.map((inv, i) => {
             const Icon = getToolIcon(inv.label);
-            // Only animate spinner while actively streaming — once done, show static icon
             const isSpinning = streaming && Icon === Loader2;
             return (
               <div
                 key={i}
                 className="flex items-center gap-1.5 px-2 py-1 rounded-md"
                 style={{
-                  background: "rgba(250,178,131,0.08)",
+                  background: "var(--accent-warm-subtle)",
                   width: "fit-content",
                 }}
               >
                 <Icon
                   size={12}
                   strokeWidth={1.5}
-                  style={{ color: "#fab283" }}
+                  style={{ color: "var(--accent-warm)" }}
                   className={isSpinning ? "animate-spin" : ""}
                 />
                 <span
                   style={{
-                    color: "#fab283",
+                    color: "var(--accent-warm)",
                     fontSize: "11px",
                     lineHeight: "16px",
                   }}
@@ -136,8 +132,8 @@ function ToolIndicators({ invocations, streaming }: ToolIndicatorsProps) {
               className="flex items-center gap-1 mt-0.5 outline-none"
               style={{ background: "transparent", border: "none", cursor: "pointer" }}
             >
-              <ChevronUp size={12} strokeWidth={1.5} style={{ color: "#6a6a6a" }} />
-              <span style={{ color: "#6a6a6a", fontSize: "11px" }}>Ocultar</span>
+              <ChevronUp size={12} strokeWidth={1.5} style={{ color: "var(--text-weak)" }} />
+              <span style={{ color: "var(--text-weak)", fontSize: "11px" }}>Ocultar</span>
             </button>
           )}
         </div>
@@ -146,18 +142,18 @@ function ToolIndicators({ invocations, streaming }: ToolIndicatorsProps) {
           onClick={() => setExpanded(true)}
           className="flex items-center gap-1.5 px-2 py-1 rounded-md outline-none"
           style={{
-            background: "rgba(250,178,131,0.08)",
+            background: "var(--accent-warm-subtle)",
             border: "none",
             cursor: "pointer",
           }}
         >
-          <Search size={12} strokeWidth={1.5} style={{ color: "#fab283" }} />
-          <span style={{ color: "#fab283", fontSize: "11px" }}>
+          <Search size={12} strokeWidth={1.5} style={{ color: "var(--accent-warm)" }} />
+          <span style={{ color: "var(--accent-warm)", fontSize: "11px" }}>
             {invocations.length === 1
               ? `Consultó 1 herramienta`
               : `Consultó ${invocations.length} herramientas`}
           </span>
-          <ChevronDown size={12} strokeWidth={1.5} style={{ color: "#6a6a6a" }} />
+          <ChevronDown size={12} strokeWidth={1.5} style={{ color: "var(--text-weak)" }} />
         </button>
       )}
     </div>
@@ -193,8 +189,8 @@ function BurbujaMensaje({ mensaje }: BurbujaMensajeProps) {
         <div
           className="w-7 h-7 rounded-full shrink-0 flex items-center justify-center mt-0.5"
           style={{
-            background: isWarning ? "rgba(250,178,131,0.15)" : "rgba(224,108,117,0.15)",
-            color: isWarning ? "#fab283" : "#e06c75",
+            background: isWarning ? "var(--accent-warm-subtle)" : "var(--error-subtle)",
+            color: isWarning ? "var(--accent-warm)" : "var(--error)",
           }}
         >
           <AlertTriangle size={14} strokeWidth={1.5} />
@@ -204,13 +200,13 @@ function BurbujaMensaje({ mensaje }: BurbujaMensajeProps) {
         <div
           className="max-w-[75%] rounded-2xl rounded-tl-sm px-4 py-2.5"
           style={{
-            background: "rgba(224,108,117,0.1)",
+            background: "var(--error-subtle)",
             border: "1px solid rgba(224,108,117,0.2)",
           }}
         >
           <p
             className="text-sm leading-relaxed"
-            style={{ color: isWarning ? "#fab283" : "#e06c75" }}
+            style={{ color: isWarning ? "var(--accent-warm)" : "var(--error)" }}
           >
             {mensaje.contenido}
           </p>
@@ -225,7 +221,7 @@ function BurbujaMensaje({ mensaje }: BurbujaMensajeProps) {
     );
   }
 
-  // Helper: render thoughts block (thinking-visible) — usado en placeholder y burbuja final
+  // Helper: render thoughts block — usado en placeholder y burbuja final
   const renderThoughts = () => {
     if (!mensaje.thoughts || mensaje.thoughts.length === 0) return null;
     return (
@@ -254,9 +250,9 @@ function BurbujaMensaje({ mensaje }: BurbujaMensajeProps) {
         </div>
         <div
           className="px-4 py-3 rounded-2xl rounded-tl-sm flex flex-col items-start gap-2"
-          style={{ background: "#252525", border: "1px solid var(--border-base)" }}
+          style={{ background: "var(--bg-surface-active)", border: "1px solid var(--border-base)" }}
         >
-          {/* Razonamiento visible (thinking-visible) — aparece durante el stream */}
+          {/* Razonamiento visible — aparece durante el stream */}
           {renderThoughts()}
           <div className="flex items-center gap-1.5">
             <span className="thinking-dot" style={{ animationDelay: "0ms" }} />
@@ -271,10 +267,10 @@ function BurbujaMensaje({ mensaje }: BurbujaMensajeProps) {
             <ThinkingIcon
               size={12}
               strokeWidth={1.5}
-              style={{ color: "#fab283" }}
+              style={{ color: "var(--accent-warm)" }}
               className={isSpinning ? "animate-spin" : ""}
             />
-            <p className="text-xs" style={{ color: "#6a6a6a", margin: 0 }}>
+            <p className="text-xs" style={{ color: "var(--text-weak)", margin: 0 }}>
               {mensaje.thinkingStatus || "Pensando..."}
             </p>
           </div>
@@ -294,7 +290,7 @@ function BurbujaMensaje({ mensaje }: BurbujaMensajeProps) {
           background: esUsuario
             ? "var(--accent)"
             : "var(--bg-surface-active)",
-          color: esUsuario ? "white" : "var(--text-base)",
+          color: esUsuario ? "var(--text-strong)" : "var(--text-base)",
         }}
       >
         {esUsuario ? "Tú" : "AI"}
@@ -321,13 +317,13 @@ function BurbujaMensaje({ mensaje }: BurbujaMensajeProps) {
             title="Copiar mensaje"
           >
             {copiado ? (
-              <Check size={14} strokeWidth={1.5} style={{ color: "#7fd88f" }} />
+              <Check size={14} strokeWidth={1.5} style={{ color: "var(--success)" }} />
             ) : (
               <Copy
                 size={14}
                 strokeWidth={1.5}
                 className="chat-copy-icon"
-                style={{ color: "#6a6a6a" }}
+                style={{ color: "var(--text-weak)" }}
               />
             )}
           </button>
@@ -349,7 +345,7 @@ function BurbujaMensaje({ mensaje }: BurbujaMensajeProps) {
             )}
             <p
               className="text-sm leading-relaxed whitespace-pre-wrap"
-              style={{ color: "white" }}
+              style={{ color: "var(--text-strong)" }}
             >
               {mensaje.contenido}
             </p>
@@ -359,7 +355,7 @@ function BurbujaMensaje({ mensaje }: BurbujaMensajeProps) {
             className="text-sm leading-relaxed prose prose-sm prose-invert max-w-none"
             style={{ color: "var(--text-base)" }}
           >
-            {/* Razonamiento visible (thinking-visible) — collapsible, arriba del contenido */}
+            {/* Razonamiento visible — collapsible, arriba del contenido */}
             {renderThoughts()}
             <MarkdownContent content={mensaje.contenido} />
             {/* Tool invocations — collapsible cuando no está en streaming */}
@@ -369,22 +365,25 @@ function BurbujaMensaje({ mensaje }: BurbujaMensajeProps) {
                 streaming={!!mensaje.streaming}
               />
             )}
-            {/* Estado del agente mientras ejecuta tools — visible y claro */}
+            {/* Estado del agente mientras ejecuta tools */}
             {mensaje.streaming && mensaje.thinkingStatus && (() => {
               const StatusIcon = getToolIcon(mensaje.thinkingStatus!);
               const spinning = StatusIcon === Loader2;
               return (
                 <div
                   className="mt-2 flex items-center gap-2 px-3 py-1.5 rounded-lg"
-                  style={{ background: "rgba(250,178,131,0.08)", border: "1px solid rgba(250,178,131,0.15)" }}
+                  style={{
+                    background: "var(--accent-warm-subtle)",
+                    border: "1px solid var(--accent-warm-border)",
+                  }}
                 >
                   <StatusIcon
                     size={14}
                     strokeWidth={1.5}
-                    style={{ color: "#fab283" }}
+                    style={{ color: "var(--accent-warm)" }}
                     className={spinning ? "animate-spin" : ""}
                   />
-                  <p className="text-xs font-medium" style={{ color: "#fab283", margin: 0 }}>
+                  <p className="text-xs font-medium" style={{ color: "var(--accent-warm)", margin: 0 }}>
                     {mensaje.thinkingStatus}
                   </p>
                   <div className="flex items-center gap-1 ml-1">
@@ -457,11 +456,10 @@ function CardBienvenida({ onConectarCanvas }: CardBienvenidaProps) {
           className="flex items-center gap-2 mx-auto px-5 py-2.5 rounded-xl text-sm font-medium transition-colors duration-150 outline-none"
           style={{
             background: "var(--accent)",
-            color: "white",
+            color: "var(--text-strong)",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background =
-              "var(--accent-hover)";
+            (e.currentTarget as HTMLElement).style.background = "var(--accent-hover)";
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.background = "var(--accent)";
@@ -516,7 +514,7 @@ function IndicadorEscritura() {
       <div
         className="px-4 py-3 rounded-2xl rounded-tl-sm flex flex-col items-start gap-2"
         style={{
-          background: "#252525",
+          background: "var(--bg-surface-active)",
           border: "1px solid var(--border-base)",
         }}
       >
@@ -525,7 +523,7 @@ function IndicadorEscritura() {
           <span className="thinking-dot" style={{ animationDelay: "160ms" }} />
           <span className="thinking-dot" style={{ animationDelay: "320ms" }} />
         </div>
-        <p className="text-xs" style={{ color: "#6a6a6a", margin: 0 }}>
+        <p className="text-xs" style={{ color: "var(--text-weak)", margin: 0 }}>
           Pensando...
         </p>
       </div>
@@ -537,11 +535,6 @@ function IndicadorEscritura() {
 
 interface ChatBloqueadoProps {
   onVerPlanes?: () => void;
-  /**
-   * "expired"  → trial vencido, usuario debe suscribirse.
-   * "unknown"  → no se pudo verificar online y no hay cache utilizable;
-   *              mostramos boton "Reintentar" en vez de "Ver planes".
-   */
   motivo?: "expired" | "unknown";
 }
 
@@ -557,8 +550,6 @@ function ChatBloqueado({ onVerPlanes, motivo = "expired" }: ChatBloqueadoProps) 
 
   const handleClick = () => {
     if (esUnknown) {
-      // Fuerza una nueva verificacion online; si tiene exito el chat se
-      // desbloquea solo via el store.
       useAuthStore.getState().checkLicense();
     } else {
       onVerPlanes?.();
@@ -570,16 +561,16 @@ function ChatBloqueado({ onVerPlanes, motivo = "expired" }: ChatBloqueadoProps) 
       <div
         className="text-center max-w-sm space-y-4 p-8 rounded-2xl"
         style={{
-          background: "#252525",
+          background: "var(--bg-surface-active)",
           border: "1px solid var(--border-base)",
         }}
       >
         {/* Lock icon */}
         <div
           className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto"
-          style={{ background: "rgba(250,178,131,0.1)" }}
+          style={{ background: "var(--accent-warm-subtle)" }}
         >
-          <Lock size={28} strokeWidth={1.5} style={{ color: "#fab283" }} />
+          <Lock size={28} strokeWidth={1.5} style={{ color: "var(--accent-warm)" }} />
         </div>
 
         {/* Title */}
@@ -600,14 +591,14 @@ function ChatBloqueado({ onVerPlanes, motivo = "expired" }: ChatBloqueadoProps) 
           onClick={handleClick}
           className="flex items-center gap-2 mx-auto px-6 py-2.5 rounded-xl text-sm font-medium transition-colors duration-150 outline-none"
           style={{
-            background: "#fab283",
-            color: "#212121",
+            background: "var(--accent-warm)",
+            color: "var(--bg-modal)",
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "#fbc49e";
+            (e.currentTarget as HTMLElement).style.background = "var(--accent-warm-hover)";
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "#fab283";
+            (e.currentTarget as HTMLElement).style.background = "var(--accent-warm)";
           }}
         >
           {cta}
@@ -629,9 +620,6 @@ export function ChatPanel({
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const { licenseStatus } = useAuthStore();
-  // Gateamos el chat en cualquier estado que no sea claramente valido.
-  // `unknown` (fail-secure: no pudimos verificar online y no hay cache utilizable)
-  // tambien bloquea, asi un atacante que rompa red + cache no obtiene chat gratis.
   const chatBloqueado =
     licenseStatus === "expired" || licenseStatus === "unknown";
   const motivoBloqueo: "expired" | "unknown" =
@@ -639,9 +627,6 @@ export function ChatPanel({
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [droppedImage, setDroppedImage] = useState<PendingImage | null>(null);
 
-  // Auto-scroll desactivado por preferencia del usuario
-
-  // Drag & drop handlers a nivel de todo el panel
   function handlePanelDragOver(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -652,7 +637,6 @@ export function ChatPanel({
   function handlePanelDragLeave(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation();
-    // Solo ocultar si sale del section completo
     const rect = e.currentTarget.getBoundingClientRect();
     if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
       setIsDraggingOver(false);
@@ -685,11 +669,17 @@ export function ChatPanel({
       {isDraggingOver && (
         <div
           className="absolute inset-0 z-40 flex items-center justify-center"
-          style={{ background: "rgba(250,178,131,0.08)", border: "3px dashed #fab283", borderRadius: "12px" }}
+          style={{
+            background: "var(--accent-warm-subtle)",
+            border: "3px dashed var(--accent-warm)",
+            borderRadius: "var(--radius-lg)",
+          }}
         >
           <div className="flex flex-col items-center gap-2">
-            <ImageIcon size={40} strokeWidth={1} style={{ color: "#fab283" }} />
-            <p className="text-sm font-medium" style={{ color: "#fab283" }}>Suelta la imagen aqui</p>
+            <ImageIcon size={40} strokeWidth={1} style={{ color: "var(--accent-warm)" }} />
+            <p className="text-sm font-medium" style={{ color: "var(--accent-warm)" }}>
+              Suelta la imagen aqui
+            </p>
           </div>
         </div>
       )}

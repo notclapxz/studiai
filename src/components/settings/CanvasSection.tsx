@@ -98,26 +98,22 @@ export function CanvasSection({
       {hasExistingSync && (
         <div
           className="rounded-xl p-3 flex items-center justify-between gap-3"
-          style={{ background: "#252525", border: "1px solid #4b4c5c" }}
+          style={{ background: "var(--bg-surface-active)", border: "1px solid var(--border-ui)" }}
         >
           <div>
-            <p className="text-xs font-medium" style={{ color: "#e0e0e0" }}>
+            <p className="text-xs font-medium" style={{ color: "var(--text-strong)" }}>
               Canvas conectado
             </p>
-            <p className="text-[11px] mt-0.5" style={{ color: "#6a6a6a" }}>
+            <p className="text-[11px] mt-0.5" style={{ color: "var(--text-weak)" }}>
               Ultima sync: {formatLastSync(lastSyncAt ?? "")}
             </p>
           </div>
           <button
             onClick={onResync}
-            className="flex items-center gap-1 text-[11px] shrink-0 transition-colors duration-150"
-            style={{ color: "#5c9cf5" }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.opacity = "0.7";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.opacity = "1";
-            }}
+            className="flex items-center gap-1 text-[11px] shrink-0 transition-opacity duration-150"
+            style={{ color: "var(--accent)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.7"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
           >
             <RefreshCw size={12} strokeWidth={1.5} />
             Re-sincronizar
@@ -129,7 +125,7 @@ export function CanvasSection({
       <div className="space-y-3">
         {/* Canvas URL */}
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium" style={{ color: "#e0e0e0" }}>
+          <label className="block text-xs font-medium" style={{ color: "var(--text-strong)" }}>
             URL de Canvas
           </label>
           <input
@@ -139,25 +135,21 @@ export function CanvasSection({
             placeholder="usil.instructure.com"
             className="w-full rounded-lg px-3 py-2 text-xs outline-none transition-colors duration-150"
             style={{
-              background: "#1a1a1a",
-              border: "1px solid #4b4c5c",
-              color: "#e0e0e0",
+              background: "var(--bg-modal-nav)",
+              border: "1px solid var(--border-ui)",
+              color: "var(--text-strong)",
             }}
-            onFocus={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = "#fab283";
-            }}
-            onBlur={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = "#4b4c5c";
-            }}
+            onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent-warm)"; }}
+            onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border-ui)"; }}
           />
-          <p className="text-[11px]" style={{ color: "#6a6a6a" }}>
-            Solo el dominio, sin https:// — ej: <code style={{ color: "#9d7cd8" }}>canvas.upc.edu.pe</code>
+          <p className="text-[11px]" style={{ color: "var(--text-weak)" }}>
+            Solo el dominio, sin https:// — ej: <code style={{ color: "var(--accent)" }}>canvas.upc.edu.pe</code>
           </p>
         </div>
 
         {/* Token */}
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium" style={{ color: "#e0e0e0" }}>
+          <label className="block text-xs font-medium" style={{ color: "var(--text-strong)" }}>
             Token de Acceso Personal
           </label>
           <div className="relative">
@@ -168,28 +160,20 @@ export function CanvasSection({
               placeholder="Token generado en Canvas"
               className="w-full rounded-lg px-3 py-2 pr-10 text-xs outline-none transition-colors duration-150 font-mono"
               style={{
-                background: "#1a1a1a",
-                border: "1px solid #4b4c5c",
-                color: "#e0e0e0",
+                background: "var(--bg-modal-nav)",
+                border: "1px solid var(--border-ui)",
+                color: "var(--text-strong)",
               }}
-              onFocus={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = "#fab283";
-              }}
-              onBlur={(e) => {
-                (e.currentTarget as HTMLElement).style.borderColor = "#4b4c5c";
-              }}
+              onFocus={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--accent-warm)"; }}
+              onBlur={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--border-ui)"; }}
             />
             <button
               type="button"
               onClick={() => onShowTokenChange(!showToken)}
               className="absolute right-2 top-1/2 -translate-y-1/2 transition-colors duration-100"
-              style={{ color: "#6a6a6a" }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.color = "#e0e0e0";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.color = "#6a6a6a";
-              }}
+              style={{ color: "var(--text-weak)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-strong)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-weak)"; }}
               aria-label={showToken ? "Ocultar token" : "Mostrar token"}
             >
               {showToken ? <EyeOff size={14} /> : <Eye size={14} />}
@@ -201,39 +185,32 @@ export function CanvasSection({
         <button
           onClick={onVerifyAndSave}
           disabled={verificationStatus === "loading" || isSaving || syncProgress.phase === "syncing"}
-          className="w-full py-2 rounded-lg text-xs font-semibold transition-colors duration-150 flex items-center justify-center gap-1.5 disabled:opacity-40"
-          style={{ background: "#5c9cf5", color: "#fff" }}
+          className="w-full py-2 rounded-lg text-xs font-semibold transition-opacity duration-150 flex items-center justify-center gap-1.5 disabled:opacity-40"
+          style={{ background: "var(--accent)", color: "var(--text-strong)" }}
           onMouseEnter={(e) => {
             if (!(e.currentTarget as HTMLButtonElement).disabled) {
               (e.currentTarget as HTMLElement).style.opacity = "0.85";
             }
           }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.opacity = "1";
-          }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
         >
           {verificationStatus === "loading" || isSaving ? (
-            <>
-              <Loader2 size={13} className="animate-spin" />
-              Verificando...
-            </>
-          ) : (
-            "Guardar y verificar"
-          )}
+            <><Loader2 size={13} className="animate-spin" />Verificando...</>
+          ) : "Guardar y verificar"}
         </button>
 
         {/* Success message */}
         {verificationStatus === "success" && userInfo && !isSyncing && (
           <div
             className="flex items-start gap-2 rounded-lg p-3"
-            style={{ background: "rgba(127,216,143,0.1)", border: "1px solid rgba(127,216,143,0.25)" }}
+            style={{ background: "var(--success-subtle)", border: "1px solid rgba(127,216,143,0.25)" }}
           >
-            <CheckCircle size={14} className="mt-0.5 shrink-0" style={{ color: "#7fd88f" }} />
+            <CheckCircle size={14} className="mt-0.5 shrink-0" style={{ color: "var(--success)" }} />
             <div>
-              <p className="text-xs font-medium" style={{ color: "#7fd88f" }}>
+              <p className="text-xs font-medium" style={{ color: "var(--success)" }}>
                 Conectado exitosamente
               </p>
-              <p className="text-xs mt-0.5" style={{ color: "#7fd88f", opacity: 0.8 }}>
+              <p className="text-xs mt-0.5" style={{ color: "var(--success)", opacity: 0.8 }}>
                 {userInfo.name ?? userInfo.display_name ?? userInfo.short_name}
               </p>
             </div>
@@ -244,14 +221,14 @@ export function CanvasSection({
         {verificationStatus === "error" && errorMessage && (
           <div
             className="flex items-start gap-2 rounded-lg p-3"
-            style={{ background: "rgba(224,108,117,0.1)", border: "1px solid rgba(224,108,117,0.25)" }}
+            style={{ background: "var(--error-subtle)", border: "1px solid rgba(224,108,117,0.25)" }}
           >
-            <XCircle size={14} className="mt-0.5 shrink-0" style={{ color: "#e06c75" }} />
+            <XCircle size={14} className="mt-0.5 shrink-0" style={{ color: "var(--error)" }} />
             <div>
-              <p className="text-xs font-medium" style={{ color: "#e06c75" }}>
+              <p className="text-xs font-medium" style={{ color: "var(--error)" }}>
                 Error de verificacion
               </p>
-              <p className="text-xs mt-0.5" style={{ color: "#e06c75", opacity: 0.8 }}>
+              <p className="text-xs mt-0.5" style={{ color: "var(--error)", opacity: 0.8 }}>
                 {errorMessage}
               </p>
             </div>
@@ -262,54 +239,52 @@ export function CanvasSection({
       {/* Instructions collapsible */}
       <div
         className="rounded-xl overflow-hidden"
-        style={{ background: "#252525", border: "1px solid #4b4c5c" }}
+        style={{ background: "var(--bg-surface-active)", border: "1px solid var(--border-ui)" }}
       >
         <button
           onClick={() => setShowInstructions(!showInstructions)}
           className="flex items-center justify-between w-full px-3 py-2.5 text-xs font-medium transition-colors duration-100"
-          style={{ color: "#e0e0e0" }}
+          style={{ color: "var(--text-strong)" }}
         >
           <span>Como obtener el token de Canvas?</span>
           {showInstructions ? (
-            <ChevronUp size={14} style={{ color: "#6a6a6a" }} />
+            <ChevronUp size={14} style={{ color: "var(--text-weak)" }} />
           ) : (
-            <ChevronDown size={14} style={{ color: "#6a6a6a" }} />
+            <ChevronDown size={14} style={{ color: "var(--text-weak)" }} />
           )}
         </button>
 
         {showInstructions && (
           <div className="px-3 pb-3 animate-fade-in">
-            <ol className="space-y-1.5 text-[11px]" style={{ color: "#6a6a6a" }}>
+            <ol className="space-y-1.5 text-[11px]" style={{ color: "var(--text-weak)" }}>
               <li className="flex gap-1.5">
-                <span className="shrink-0" style={{ color: "#4b4c5c" }}>1.</span>
+                <span className="shrink-0" style={{ color: "var(--border-ui)" }}>1.</span>
                 <span>
                   Inicia sesion en Canvas y ve a{" "}
-                  <strong style={{ color: "#e0e0e0" }}>Cuenta</strong> →{" "}
-                  <strong style={{ color: "#e0e0e0" }}>Configuracion</strong>
+                  <strong style={{ color: "var(--text-strong)" }}>Cuenta</strong> →{" "}
+                  <strong style={{ color: "var(--text-strong)" }}>Configuracion</strong>
                 </span>
               </li>
               <li className="flex gap-1.5">
-                <span className="shrink-0" style={{ color: "#4b4c5c" }}>2.</span>
+                <span className="shrink-0" style={{ color: "var(--border-ui)" }}>2.</span>
                 <span>
                   Busca la seccion{" "}
-                  <strong style={{ color: "#e0e0e0" }}>Tokens de Acceso Aprobados</strong>
+                  <strong style={{ color: "var(--text-strong)" }}>Tokens de Acceso Aprobados</strong>
                 </span>
               </li>
               <li className="flex gap-1.5">
-                <span className="shrink-0" style={{ color: "#4b4c5c" }}>3.</span>
+                <span className="shrink-0" style={{ color: "var(--border-ui)" }}>3.</span>
                 <span>
                   Haz clic en{" "}
-                  <strong style={{ color: "#e0e0e0" }}>+ Nuevo Token de Acceso</strong>
+                  <strong style={{ color: "var(--text-strong)" }}>+ Nuevo Token de Acceso</strong>
                 </span>
               </li>
               <li className="flex gap-1.5">
-                <span className="shrink-0" style={{ color: "#4b4c5c" }}>4.</span>
-                <span>
-                  Asigna un proposito (ej: &quot;StudyAI&quot;) y genera el token
-                </span>
+                <span className="shrink-0" style={{ color: "var(--border-ui)" }}>4.</span>
+                <span>Asigna un proposito (ej: &quot;StudyAI&quot;) y genera el token</span>
               </li>
               <li className="flex gap-1.5">
-                <span className="shrink-0" style={{ color: "#4b4c5c" }}>5.</span>
+                <span className="shrink-0" style={{ color: "var(--border-ui)" }}>5.</span>
                 <span>Copia el token generado — solo se muestra una vez</span>
               </li>
             </ol>
@@ -319,8 +294,8 @@ export function CanvasSection({
                 href={`https://${normalizeCanvasUrl(canvasUrl)}/profile/settings`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-[11px] mt-2 transition-colors duration-150"
-                style={{ color: "#5c9cf5" }}
+                className="inline-flex items-center gap-1 text-[11px] mt-2 transition-opacity duration-150"
+                style={{ color: "var(--accent)" }}
               >
                 Abrir configuracion de Canvas
                 <ExternalLink size={11} />
@@ -331,7 +306,7 @@ export function CanvasSection({
       </div>
 
       {/* Privacy note */}
-      <p className="text-center text-[10px]" style={{ color: "#4b4c5c" }}>
+      <p className="text-center text-[10px]" style={{ color: "var(--text-ghost)" }}>
         Tu token se guarda localmente y nunca se envia a servidores externos
       </p>
     </div>

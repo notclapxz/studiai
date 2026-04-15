@@ -306,24 +306,31 @@ export function App() {
 
   useEffect(() => {
     checkForUpdates(({ version, onInstall }) => {
+      // Mostrar toast persistente con botón explícito — el usuario decide cuándo instalar.
+      // onInstall() descarga + instala + relanza; no se llama automáticamente.
       addToast({
         variant: "success",
-        message: `Nueva versión ${version} disponible — descargando...`,
-        duration: 5000,
+        message: `Nueva versión ${version} lista. ¿Instalar ahora?`,
+        duration: 0, // persistente hasta que el usuario decida
+        action: {
+          label: "Instalar",
+          onClick: () => {
+            addToast({
+              variant: "success",
+              message: "Instalando actualización...",
+              duration: 8000,
+            });
+            onInstall().catch((err: unknown) => {
+              console.error("[Updater] Error instalando update:", err);
+              addToast({
+                variant: "error",
+                message: "Error al instalar la actualización. Reintenta más tarde.",
+                duration: 5000,
+              });
+            });
+          },
+        },
       });
-      // Descargar e instalar en background; relaunch automatico al terminar
-      onInstall()
-        .then(() => {
-          // relaunch() ya fue llamado dentro de onInstall — nunca llega aqui
-        })
-        .catch((err: unknown) => {
-          console.error("[Updater] Error instalando update:", err);
-          addToast({
-            variant: "error",
-            message: "Error al instalar la actualización. Reintenta más tarde.",
-            duration: 5000,
-          });
-        });
     });
   }, []);
 

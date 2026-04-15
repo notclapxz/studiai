@@ -1,7 +1,9 @@
 // AcercaSection.tsx — Sección "Acerca de" en SettingsModal
 
+import { useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
-import { BookOpen, ExternalLink, RefreshCw, Sparkles } from "lucide-react";
+import { BookOpen, ExternalLink, RefreshCw, Sparkles, Download } from "lucide-react";
+import { checkForUpdates, UPDATER_ENABLED } from "../../lib/updater";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -10,6 +12,11 @@ interface AcercaSectionProps {
   onOpenChangelog?: () => void;
   onClose: () => void;
   onForceOnboarding?: () => void;
+  /**
+   * Llamado cuando se detecta una nueva versión disponible.
+   * El caller (App.tsx via SettingsModal) maneja el toast/UI de instalación.
+   */
+  onUpdateFound?: (version: string, onInstall: () => Promise<void>) => void;
 }
 
 // ─── Componente ─────────────────────────────────────────────────────────────
@@ -19,7 +26,27 @@ export function AcercaSection({
   onOpenChangelog,
   onClose,
   onForceOnboarding,
+  onUpdateFound,
 }: AcercaSectionProps) {
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<"idle" | "latest" | "found">("idle");
+
+  async function handleCheckUpdate() {
+    if (!UPDATER_ENABLED || checkingUpdate) return;
+    setCheckingUpdate(true);
+    setUpdateStatus("idle");
+
+    let found = false;
+    await checkForUpdates(({ version, onInstall }) => {
+      found = true;
+      setUpdateStatus("found");
+      onUpdateFound?.(version, onInstall);
+    });
+
+    if (!found) setUpdateStatus("latest");
+    setCheckingUpdate(false);
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* App info */}
@@ -117,6 +144,38 @@ export function AcercaSection({
           Repetir tutorial
         </button>
       </div>
+
+      {/* Buscar actualizaciones — solo en builds empaquetados */}
+      {UPDATER_ENABLED && (
+        <div>
+          <button
+            type="button"
+            onClick={() => void handleCheckUpdate()}
+            disabled={checkingUpdate}
+            className="w-full flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors duration-150"
+            style={{
+              background: "#252525",
+              border: "1px solid #4b4c5c",
+              color: checkingUpdate ? "#6a6a6a" : "#e0e0e0",
+              cursor: checkingUpdate ? "not-allowed" : "pointer",
+            }}
+            onMouseEnter={(e) => {
+              if (!checkingUpdate)
+                (e.currentTarget as HTMLButtonElement).style.background = "#2e2e2e";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = "#252525";
+            }}
+          >
+            <Download size={13} strokeWidth={1.5} />
+            {checkingUpdate
+              ? "Buscando actualizaciones..."
+              : updateStatus === "latest"
+                ? "Estás al día ✓"
+                : "Buscar actualizaciones"}
+          </button>
+        </div>
+      )}
 
       {/* Build info */}
       <p className="text-[10px]" style={{ color: "#4b4c5c" }}>

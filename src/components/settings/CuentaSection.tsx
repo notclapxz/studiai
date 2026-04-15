@@ -41,7 +41,6 @@ export function CuentaSection({
   onShowThinkingReasoningChange,
   onNavigateToPlanes,
 }: CuentaSectionProps) {
-  // Estado local para feedback visual del toggle (persiste a DB inline)
   const [trustPending, setTrustPending] = useState(false);
   const [thinkingPending, setThinkingPending] = useState(false);
 
@@ -82,8 +81,6 @@ export function CuentaSection({
   }
 
   async function handleLogout() {
-    // Limpiar cache de licencia ANTES del signOut para evitar que el
-    // próximo usuario vea brevemente el estado de licencia del anterior
     try {
       await useAuthStore.getState().resetLicenseCache();
     } catch (err: unknown) {
@@ -106,16 +103,16 @@ export function CuentaSection({
         ) : (
           <div
             className="w-11 h-11 rounded-full flex items-center justify-center shrink-0 text-sm font-bold"
-            style={{ background: "#fab283", color: "#1a1a1a" }}
+            style={{ background: "var(--accent-warm)", color: "var(--bg-modal)" }}
           >
             {userName.charAt(0).toUpperCase()}
           </div>
         )}
         <div className="min-w-0">
-          <p className="text-sm font-semibold truncate" style={{ color: "#e0e0e0" }}>
+          <p className="text-sm font-semibold truncate" style={{ color: "var(--text-strong)" }}>
             {userName}
           </p>
-          <p className="text-xs truncate" style={{ color: "#6a6a6a" }}>
+          <p className="text-xs truncate" style={{ color: "var(--text-weak)" }}>
             {userEmail}
           </p>
         </div>
@@ -124,33 +121,32 @@ export function CuentaSection({
       {/* Plan badge */}
       <div
         className="rounded-xl p-4 space-y-3"
-        style={{ background: "#252525", border: "1px solid #4b4c5c" }}
+        style={{ background: "var(--bg-surface-active)", border: "1px solid var(--border-ui)" }}
       >
         {licenseStatus === "trial" && (
           <>
             <div className="flex items-center gap-2">
               <span
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
-                style={{ background: "rgba(250,178,131,0.15)", color: "#fab283" }}
+                style={{ background: "var(--accent-warm-subtle)", color: "var(--accent-warm)" }}
               >
                 Trial · {daysRemaining} dia{daysRemaining !== 1 ? "s" : ""} restante{daysRemaining !== 1 ? "s" : ""}
               </span>
             </div>
-            {/* Progress bar */}
             <div>
               <div
                 className="h-1.5 rounded-full overflow-hidden"
-                style={{ background: "#1a1a1a" }}
+                style={{ background: "var(--bg-modal-nav)" }}
               >
                 <div
                   className="h-full rounded-full transition-all duration-500"
                   style={{
                     width: `${trialPercent}%`,
-                    background: trialPercent > 75 ? "#e06c75" : "#fab283",
+                    background: trialPercent > 75 ? "var(--error)" : "var(--accent-warm)",
                   }}
                 />
               </div>
-              <p className="text-[11px] mt-1.5" style={{ color: "#6a6a6a" }}>
+              <p className="text-[11px] mt-1.5" style={{ color: "var(--text-weak)" }}>
                 {trialUsedDays} de {trialTotalDays} dias usados
               </p>
             </div>
@@ -160,7 +156,7 @@ export function CuentaSection({
         {licenseStatus === "pro" && (
           <span
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
-            style={{ background: "rgba(127,216,143,0.15)", color: "#7fd88f" }}
+            style={{ background: "var(--success-subtle)", color: "var(--success)" }}
           >
             Plan Pro
           </span>
@@ -169,7 +165,7 @@ export function CuentaSection({
         {licenseStatus === "expired" && (
           <span
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
-            style={{ background: "rgba(224,108,117,0.15)", color: "#e06c75" }}
+            style={{ background: "var(--error-subtle)", color: "var(--error)" }}
           >
             Trial expirado
           </span>
@@ -178,7 +174,7 @@ export function CuentaSection({
         {(licenseStatus === "unknown" || licenseStatus === "loading") && (
           <span
             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
-            style={{ background: "rgba(250,178,131,0.15)", color: "#fab283" }}
+            style={{ background: "var(--accent-warm-subtle)", color: "var(--accent-warm)" }}
           >
             Verificando licencia...
           </span>
@@ -187,14 +183,10 @@ export function CuentaSection({
         {licenseStatus !== "pro" && licenseStatus !== "loading" && (
           <button
             onClick={onNavigateToPlanes}
-            className="w-full py-2 rounded-lg text-xs font-semibold transition-colors duration-150"
-            style={{ background: "#fab283", color: "#1a1a1a" }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.opacity = "0.85";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.opacity = "1";
-            }}
+            className="w-full py-2 rounded-lg text-xs font-semibold transition-opacity duration-150"
+            style={{ background: "var(--accent-warm)", color: "var(--bg-modal)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "0.85"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
           >
             Ver planes
           </button>
@@ -204,14 +196,14 @@ export function CuentaSection({
       {/* Trust mode toggle */}
       <div
         className="rounded-xl p-4 space-y-2"
-        style={{ background: "#252525", border: "1px solid #4b4c5c" }}
+        style={{ background: "var(--bg-surface-active)", border: "1px solid var(--border-ui)" }}
       >
         <div className="flex items-center justify-between">
           <div className="min-w-0 mr-3">
-            <p className="text-sm font-medium" style={{ color: "#e0e0e0" }}>
+            <p className="text-sm font-medium" style={{ color: "var(--text-strong)" }}>
               Modo confianza
             </p>
-            <p className="text-[11px] leading-relaxed mt-0.5" style={{ color: "#6a6a6a" }}>
+            <p className="text-[11px] leading-relaxed mt-0.5" style={{ color: "var(--text-weak)" }}>
               Permitir al asistente ejecutar comandos sin confirmacion
             </p>
           </div>
@@ -220,7 +212,7 @@ export function CuentaSection({
             aria-checked={trustMode}
             onClick={handleTrustModeToggle}
             className="relative shrink-0 inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none"
-            style={{ background: trustMode ? "#fab283" : "#3a3a3a" }}
+            style={{ background: trustMode ? "var(--accent-warm)" : "var(--border-ui)" }}
           >
             <span
               className="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform duration-200"
@@ -229,23 +221,23 @@ export function CuentaSection({
           </button>
         </div>
         {trustMode && (
-          <p className="text-[11px]" style={{ color: "#fab283" }}>
+          <p className="text-[11px]" style={{ color: "var(--accent-warm)" }}>
             El asistente puede ejecutar comandos en tu terminal
           </p>
         )}
       </div>
 
-      {/* Mostrar razonamiento del asistente (toggle) */}
+      {/* Mostrar razonamiento toggle */}
       <div
         className="rounded-xl p-4 space-y-2"
-        style={{ background: "#252525", border: "1px solid #4b4c5c" }}
+        style={{ background: "var(--bg-surface-active)", border: "1px solid var(--border-ui)" }}
       >
         <div className="flex items-center justify-between">
           <div className="min-w-0 mr-3">
-            <p className="text-sm font-medium" style={{ color: "#e0e0e0" }}>
+            <p className="text-sm font-medium" style={{ color: "var(--text-strong)" }}>
               Mostrar razonamiento del asistente
             </p>
-            <p className="text-[11px] leading-relaxed mt-0.5" style={{ color: "#6a6a6a" }}>
+            <p className="text-[11px] leading-relaxed mt-0.5" style={{ color: "var(--text-weak)" }}>
               Muestra un resumen del proceso interno antes de responder.
               Este detalle puede aparecer en ingles segun el contenido.
             </p>
@@ -255,7 +247,7 @@ export function CuentaSection({
             aria-checked={showThinkingReasoning}
             onClick={handleThinkingToggle}
             className="relative shrink-0 inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none"
-            style={{ background: showThinkingReasoning ? "#fab283" : "#3a3a3a" }}
+            style={{ background: showThinkingReasoning ? "var(--accent-warm)" : "var(--border-ui)" }}
           >
             <span
               className="inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform duration-200"
@@ -269,13 +261,9 @@ export function CuentaSection({
       <button
         onClick={handleLogout}
         className="flex items-center gap-2 text-xs transition-colors duration-150 py-1"
-        style={{ color: "#6a6a6a" }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.color = "#e06c75";
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.color = "#6a6a6a";
-        }}
+        style={{ color: "var(--text-weak)" }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--error)"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--text-weak)"; }}
       >
         <LogOut size={14} strokeWidth={1.5} />
         Cerrar sesion

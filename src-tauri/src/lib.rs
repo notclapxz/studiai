@@ -4888,6 +4888,8 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         // Plugin Updater — auto-update con firma criptográfica
         .plugin(tauri_plugin_updater::Builder::new().build())
+        // Plugin Process — relaunch después de instalar update
+        .plugin(tauri_plugin_process::init())
         // Plugin Notification — notificaciones nativas del SO (Pomodoro + deadlines)
         .plugin(tauri_plugin_notification::init())
         // Plugin SQL — SQLite con migraciones automáticas al iniciar

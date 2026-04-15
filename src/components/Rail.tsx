@@ -163,7 +163,7 @@ function useIndexState(): IndexUiState {
 function IndexDot({ phase }: { phase: IndexPhase }) {
   if (phase === "idle") return null;
 
-  const color = phase === "done" ? "#16a34a" : "var(--accent)";
+  const color = phase === "done" ? "var(--success)" : "var(--accent)";
 
   return (
     <span
@@ -228,7 +228,7 @@ function IndexTooltip({ state }: { state: IndexUiState }) {
         </div>
       )}
       <p className="text-xs font-medium">{statusLine}</p>
-      <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>{subLine}</p>
+      <p className="text-xs mt-0.5" style={{ color: "var(--text-weak)" }}>{subLine}</p>
     </div>
   );
 }
@@ -238,7 +238,7 @@ function IndexTooltip({ state }: { state: IndexUiState }) {
 function RailProgressBar({ state }: { state: IndexUiState }) {
   if (state.phase === "idle") return null;
   const pct = state.total > 0 ? (state.done / state.total) * 100 : 0;
-  const color = state.phase === "done" ? "#16a34a" : "var(--accent)";
+  const color = state.phase === "done" ? "var(--success)" : "var(--accent)";
 
   return (
     <div
@@ -448,10 +448,10 @@ export function Rail({
                 height: 16,
                 fontSize: 9,
                 fontWeight: 700,
-                background: phase === "focus" ? "#dc2626" : "#16a34a",
+                background: phase === "focus" ? "var(--error)" : "var(--success)",
                 padding: "0 3px",
                 boxShadow: isRunning
-                  ? `0 0 6px ${phase === "focus" ? "rgba(220,38,38,0.6)" : "rgba(22,163,74,0.6)"}`
+                  ? `0 0 6px ${phase === "focus" ? "var(--error-subtle)" : "var(--success-subtle)"}`
                   : "none",
               }}
             >
@@ -479,16 +479,16 @@ export function Rail({
                 height: 7,
                 background:
                   licenseStatus === "pro"
-                    ? "#7fd88f"
+                    ? "var(--success)"
                     : licenseStatus === "expired"
-                      ? "#e06c75"
-                      : "#fab283",
+                      ? "var(--error)"
+                      : "var(--accent-warm)",
                 boxShadow:
                   licenseStatus === "pro"
-                    ? "0 0 4px rgba(127,216,143,0.5)"
+                    ? "0 0 4px var(--success-subtle)"
                     : licenseStatus === "expired"
-                      ? "0 0 4px rgba(224,108,117,0.5)"
-                      : "0 0 4px rgba(250,178,131,0.5)",
+                      ? "0 0 4px var(--error-subtle)"
+                      : "0 0 4px var(--accent-warm-subtle)",
               }}
             />
           )}

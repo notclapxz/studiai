@@ -98,15 +98,16 @@ pub fn presentacion() -> String {
     )
 }
 
-/// `tarea`: tema oscuro (fondo #1a1a2e), carátula + una página por ejercicio.
-/// Cada página: barra de cabecera (navy #1a1a2e, título acento #4fc3f7) +
-/// screenshot centrado (object-fit: contain → `fit: "contain"`). La imagen llega
+/// `tarea`: 16:9 apaisado (33.87cm × 19.05cm, como la guía 1920×1080), tema
+/// oscuro (fondo #1e1e1e), carátula + una página por ejercicio. Cada página:
+/// barra de cabecera (navy #1a1a2e, título acento #4fc3f7) + screenshot a
+/// página completa (object-fit: contain → `fit: "contain"`). La imagen llega
 /// al file resolver con key "ex_{i}.png" (recortada 5% inferior en mod.rs).
 /// `ex_count` y `ex_{i}_title` llegan por inputs.
 pub fn tarea() -> String {
     format!(
         r##"{cover}
-#set page(paper: "a4", margin: 0pt, fill: rgb("#1a1a2e"))
+#set page(width: 33.87cm, height: 19.05cm, margin: 0pt, fill: rgb("#1e1e1e"))
 #set text(font: "Inter", size: 12pt, fill: rgb("#e8e8e8"), lang: "es")
 
 // Carátula sobre tema oscuro (con padding manual porque margin=0).
@@ -121,15 +122,15 @@ pub fn tarea() -> String {
   // Barra de cabecera.
   block(
     width: 100%,
-    fill: rgb("#16213e"),
-    inset: (x: 2cm, y: 0.9cm),
+    fill: rgb("#1a1a2e"),
+    inset: (x: 1.5cm, y: 0.5cm),
   )[
-    #text(size: 18pt, weight: "bold", fill: rgb("#4fc3f7"))[#t]
+    #align(center)[#text(size: 16pt, weight: "bold", fill: rgb("#4fc3f7"))[#t]]
   ]
-  // Screenshot centrado, contain.
-  block(width: 100%, height: 1fr, inset: 1.5cm)[
+  // Screenshot centrado a página completa, contain (guía: área 1920×1020).
+  block(width: 100%, height: 1fr)[
     #align(center + horizon)[
-      #image("ex_" + str(i) + ".png", width: 100%, fit: "contain")
+      #image("ex_" + str(i) + ".png", width: 100%, height: 100%, fit: "contain")
     ]
   ]
 }}
@@ -148,6 +149,8 @@ mod tests {
         assert!(informe().contains("fill: white"));
         assert!(presentacion().contains("33.87cm"));
         assert!(presentacion().contains("#1e1e1e"));
+        assert!(tarea().contains("33.87cm"));
+        assert!(tarea().contains("#1e1e1e"));
         assert!(tarea().contains("#1a1a2e"));
         assert!(tarea().contains("fit: \"contain\""));
     }

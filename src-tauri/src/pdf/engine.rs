@@ -139,4 +139,81 @@ mod tests {
         let result = compile(&template, inputs, &[]);
         assert!(result.is_err(), "markup inválido debe ser Err");
     }
+
+    // ─── Smoke E2E: los 3 doc_type compilan a PDF real (header + tamaño) ──────
+    // Cobertura de regresión permanente añadida en sdd-verify (Fase 5). Cada test
+    // ejercita compile() de extremo a extremo con contenido representativo y
+    // afirma header %PDF + tamaño no trivial. NO requiere GUI ni red.
+
+    fn base_inputs() -> Dict {
+        let mut inputs = Dict::new();
+        inputs.insert("title".into(), "Smoke".into_value());
+        inputs.insert("course".into(), "Curso X".into_value());
+        inputs.insert("author".into(), "Estudiante".into_value());
+        inputs.insert("date".into(), "4 de junio de 2026".into_value());
+        inputs.insert("university".into(), "none".into_value());
+        inputs
+    }
+
+    fn assert_pdf(bytes: &[u8]) {
+        assert_eq!(&bytes[0..5], b"%PDF-", "debe empezar con header %PDF-");
+        // Un PDF con fuentes embebidas + contenido nunca es trivial.
+        assert!(bytes.len() > 1000, "PDF demasiado pequeño: {} bytes", bytes.len());
+    }
+
+    /// informe con heading + matemática Typst ($x^2$) → PDF claro A4.
+    #[test]
+    fn smoke_informe_with_heading_and_math() {
+        let template = super::super::templates::informe();
+        let mut inputs = base_inputs();
+        inputs.insert(
+            "body".into(),
+            "= Introducción\n\nLa derivada es $f'(x)$ y el cuadrado $x^2$ aparece aquí.\n\n== Detalle\n\n- punto uno\n- punto dos"
+                .into_value(),
+        );
+        let bytes = compile(&template, inputs, &[]).expect("informe debe compilar");
+        assert_pdf(&bytes);
+    }
+
+    /// presentacion con 2 slides → PDF apaisado oscuro (2 páginas de contenido).
+    #[test]
+    fn smoke_presentacion_two_slides() {
+        let template = super::super::templates::presentacion();
+        let mut inputs = base_inputs();
+        inputs.insert("slide_count".into(), "2".into_value());
+        inputs.insert("slide_0_heading".into(), "Slide Uno".into_value());
+        inputs.insert("slide_0_content".into(), "Contenido del *primer* slide.".into_value());
+        inputs.insert("slide_1_heading".into(), "Slide Dos".into_value());
+        inputs.insert("slide_1_content".into(), "Segundo slide con $a^2 + b^2$.".into_value());
+        let bytes = compile(&template, inputs, &[]).expect("presentacion debe compilar");
+        assert_pdf(&bytes);
+    }
+
+    /// tarea con 1 ejercicio usando un PNG dummy generado en memoria → PDF oscuro.
+    #[test]
+    fn smoke_tarea_one_exercise_with_dummy_png() {
+        use image::{ImageFormat, RgbImage};
+        use std::io::Cursor;
+
+        // Genera un PNG dummy 200x120 (gradiente simple) en memoria.
+        let mut img = RgbImage::new(200, 120);
+        for (x, y, px) in img.enumerate_pixels_mut() {
+            *px = image::Rgb([(x % 256) as u8, (y % 256) as u8, 128]);
+        }
+        let mut png: Vec<u8> = Vec::new();
+        image::DynamicImage::ImageRgb8(img)
+            .write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+            .expect("encode dummy png");
+
+        let template = super::super::templates::tarea();
+        let mut inputs = base_inputs();
+        inputs.insert("ex_count".into(), "1".into_value());
+        inputs.insert("ex_0_title".into(), "Ejercicio 1".into_value());
+
+        let files = vec![("ex_0.png".to_string(), png)];
+        let bytes = compile(&template, inputs, &files).expect("tarea debe compilar");
+        assert_pdf(&bytes);
+    }
+
+
 }

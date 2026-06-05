@@ -60,3 +60,12 @@ image = "0.25"
 libc = "0.2"
 # Expresiones regulares — para detección de duplicados Canvas (cleanup)
 regex = "1"
+# Generación nativa de PDF con Typst — wrapper de templating sobre typst.
+# Pineado a =0.15.5 (verificado leyendo el source del crate). NO re-exporta `typst`
+# ni `typst-pdf`, por eso ambos se añaden como deps directas, pineadas a la versión
+# exacta que la lib usa internamente (0.14.2, confirmado en su Cargo.lock).
+typst-as-lib = "=0.15.5"
+# Tipos core de Typst (Dict, IntoValue, Bytes, PagedDocument, SourceDiagnostic, etc.).
+typst = "=0.14.2"
+# Export de PagedDocument a bytes PDF (typst_pdf::pdf).
+typst-pdf = "=0.14.2"

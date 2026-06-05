@@ -3,6 +3,7 @@
 
 mod canvas;
 mod db;
+mod pdf;
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

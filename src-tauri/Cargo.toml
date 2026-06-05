@@ -69,3 +69,6 @@ typst-as-lib = "=0.15.5"
 typst = "=0.14.2"
 # Export de PagedDocument a bytes PDF (typst_pdf::pdf).
 typst-pdf = "=0.14.2"
+# Fecha actual (fallback de carátula "D de MMMM de YYYY"). Ya presente como dep
+# transitiva (0.4.44) vía typst-as-lib; se declara directa para usarla en el módulo pdf.
+chrono = "0.4"

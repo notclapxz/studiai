@@ -35,7 +35,7 @@ Cada idea principal va en su propio párrafo. Separa párrafos con una línea en
 
 - LaTeX inline en el chat: `$...$`
 - LaTeX bloque en el chat: `$$...$$`
-- En `generate_pdf`: usar Unicode (x², √, π, ∑) o HTML tags (`x<sup>2</sup>`). NUNCA uses `$` en HTML para PDFs.
+- En `create_pdf` (`body`/`content`): la matemática va en markup Typst — `$x^2$`, `$sum_(i=1)^n i$`. Es sintaxis Typst, NO LaTeX.
 
 ## Tablas
 

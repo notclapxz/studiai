@@ -1,8 +1,8 @@
-# EJEMPLO — Generación de PDF con research previo (flow Unix)
+# EJEMPLO — Generación de PDF con research previo (create_pdf)
 
 USUARIO: "Hazme un PDF con un resumen de mis notas del curso de mate, incluyendo las tareas pendientes"
 
-## CORRECTO — research PRIMERO, después create_file, después convertir
+## CORRECTO — research PRIMERO, después create_pdf
 
 [paso 1: research]
 
@@ -11,50 +11,44 @@ USUARIO: "Hazme un PDF con un resumen de mis notas del curso de mate, incluyendo
     read_document({ id: 456 })
     get_upcoming_deadlines({ course_id: 123 })
 
-[paso 2: con la info real, crear HTML con create_file]
+[paso 2: con la info real, generar el PDF]
 
-    create_file({
-      path: "/Users/usuario/Downloads/resumen-matematica.html",
-      content: "<!DOCTYPE html><html><head><meta charset='UTF-8'><style>body{font-family:sans-serif;margin:40px;line-height:1.6}h1{color:#222}ul{padding-left:20px}.task{background:#f5f5f5;padding:8px;margin:6px 0}</style></head><body><h1>Resumen de Matemática</h1><h2>Conceptos clave</h2><ul><li><strong>Derivadas</strong>: tasa de cambio instantánea</li><li><strong>Integrales</strong>: área bajo la curva</li></ul><h2>Tareas pendientes</h2><div class='task'><strong>Tarea 1</strong> — vence 12/04</div></body></html>"
+    create_pdf({
+      doc_type: "informe",
+      title: "Resumen de Matemática",
+      course: "Matemática",
+      author: "Estudiante",
+      body: "= Conceptos clave\n\n- *Derivadas*: tasa de cambio instantánea, $f'(x) = lim_(h->0) (f(x+h)-f(x))/h$\n- *Integrales*: área bajo la curva\n\n= Tareas pendientes\n\n- *Tarea 1* — vence 12/04"
     })
 
-[paso 3: convertir a PDF]
+[paso 3: confirmar al usuario en UNA oración]
 
-    run_bash({ command: "weasyprint '/Users/usuario/Downloads/resumen-matematica.html' '/Users/usuario/Downloads/resumen-matematica.pdf'" })
+"Listo, generé el informe de Matemática con tus conceptos clave y las tareas pendientes."
 
-[paso 4: abrir]
+## INCORRECTO #1 — generar el PDF antes del research
 
-    run_bash({ command: "open '/Users/usuario/Downloads/resumen-matematica.pdf'" })
+    create_pdf({ doc_type: "informe", title: "Matemática", body: "= Conceptos\n\nAlgunos conceptos generales..." })
 
-[paso 5: confirmar al usuario]
+MAL. El body quedó con info GENÉRICA inventada, no con tus notas reales. SIEMPRE research primero.
 
-"Listo, `resumen-matematica.pdf` en `~/Downloads/`. Incluye los conceptos clave de derivadas e integrales más tus tareas pendientes."
+## INCORRECTO #2 — narrar el markup en el chat
 
-## INCORRECTO #1 — generar PDF antes del research
+"Voy a crear el PDF. Contenido:
 
-[paso 1 INCORRECTO: salta el research]
+    = Resumen
+    - Concepto 1..."
 
-    create_file({
-      path: "...",
-      content: "<!DOCTYPE html>...<h1>Matemática</h1><p>Algunos conceptos generales...</p>"
-    })
+MAL. NUNCA pegues el markup en el chat. Va como argumento `body` de `create_pdf`.
 
-MAL. El HTML quedó con info GENÉRICA inventada, no con tus notas reales. SIEMPRE research primero.
+## INCORRECTO #3 — overrides de geometría en el body
 
-## INCORRECTO #2 — narrar el HTML en el chat
+    create_pdf({ doc_type: "informe", title: "X", body: "#set page(width: 10cm)\n#set text(font: \"Arial\")\n= Resumen" })
 
-"Voy a crear el PDF. Contenido del PDF:
+MAL. `#set page`/`#set text`/`#pagebreak` están PROHIBIDOS en `body` — la plantilla controla geometría y tema. Rompen el layout.
 
-    <!DOCTYPE html>
-    <html>
-    ..."
+## INCORRECTO #4 — usar HTML o weasyprint
 
-MAL. NUNCA pegues el HTML en el chat. Va como argumento de `create_file`.
+    create_file({ path: "~/Downloads/x.html", content: "<!DOCTYPE html>..." })
+    run_bash({ command: "weasyprint x.html x.pdf" })
 
-## INCORRECTO #3 — usar markdown en el HTML
-
-    create_file({
-      content: "<!DOCTYPE html><body># Resumen\n- **Concepto 1**: ...\n- **Concepto 2**: ..."
-    })
-
-MAL. WeasyPrint no renderiza markdown. Usa `<h1>`, `<ul><li>`, `<strong>` etc. Los `#` y `**` aparecen literales en el PDF.
+MAL. Eso ya no existe. Para PDFs usa SIEMPRE `create_pdf` (motor Typst nativo, sin HTML ni dependencias externas).

@@ -280,7 +280,7 @@ fn build_system_prompt(ctx: &RuntimeContext) -> String {
 //   "NONE" — prohíbe tools
 //
 // Usamos "ANY" + allowed_function_names para turnos donde el user message
-// implica un tool específico (fix del bug de narración de HTML en generate_pdf).
+// implica un tool específico (ej. web_search).
 
 #[derive(Debug, Clone, serde::Serialize)]
 struct ToolConfig {
@@ -681,37 +681,75 @@ fn build_tools() -> serde_json::Value {
                     "required": ["path"]
                 }
             },
-            // REMOVED 2026-04-10 (pdf-flow-fix): se eliminó `generate_pdf` del
-            // schema de tools. En su lugar, el agente usa el flow Unix:
-            // create_file + run_bash weasyprint + run_bash open.
-            // Razón: forzar mode=ANY sobre generate_pdf causaba que Gemini
-            // llamara el tool ANTES de hacer research, generando PDFs con
-            // datos inventados. El flow Unix permite research natural con
-            // AUTO mode, y es más componible (cualquier converter, no solo
-            // weasyprint hardcoded).
-            //
-            // La función `tool_generate_pdf` y el dispatch case siguen
-            // presentes por rollback safety: si Gemini llama `generate_pdf`
-            // desde historia de chat vieja, todavía funciona.
-            //
-            // {
-            //     "name": "generate_pdf",
-            //     "description": "Genera un archivo PDF a partir de contenido HTML con CSS. Ideal para crear reportes, resumenes, presentaciones, documentos formales, etc. El PDF se guarda en la carpeta de Descargas del usuario.",
-            //     "parameters": {
-            //         "type": "object",
-            //         "properties": {
-            //             "filename": {
-            //                 "type": "string",
-            //                 "description": "Nombre del archivo PDF (sin extension, ej: 'reporte-matematicas')"
-            //             },
-            //             "html_content": {
-            //                 "type": "string",
-            //                 "description": "Contenido HTML completo con estilos CSS inline o en <style> tag. Debe ser un documento HTML valido con <html>, <head>, <body>."
-            //             }
-            //         },
-            //         "required": ["filename", "html_content"]
-            //     }
-            // },
+            {
+                "name": "create_pdf",
+                "description": "Genera un PDF NATIVO (motor Typst embebido, sin dependencias externas: nada de weasyprint/Python/HTML). Tres formatos vía `doc_type`: 'informe' (A4 retrato, tema claro imprimible), 'presentacion' (16:9 apaisado, tema oscuro), 'tarea' (carátula + un screenshot por página). La plantilla (geometría, carátula con logo/curso/título/autor/fecha, tema) la controla la app; tú solo aportas el CONTENIDO. REGLA CRÍTICA: investiga/lee el material fuente PRIMERO (search_notes, list_documents, read_document, web_search, get_upcoming_deadlines) — NUNCA inventes contenido. Si la compilación falla, el error de Typst se te devuelve verbatim en el campo `error`: corrígelo y reintenta en el mismo loop. El PDF se guarda y se ABRE automáticamente.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "doc_type": {
+                            "type": "string",
+                            "enum": ["informe", "presentacion", "tarea"],
+                            "description": "Formato del documento."
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Título del documento (aparece en la carátula)."
+                        },
+                        "course": {
+                            "type": "string",
+                            "description": "Nombre del curso (carátula)."
+                        },
+                        "author": {
+                            "type": "string",
+                            "description": "Autor (carátula)."
+                        },
+                        "date": {
+                            "type": "string",
+                            "description": "Opcional. Fecha en texto (ej: '4 de junio de 2026'). Si se omite, se usa la fecha actual."
+                        },
+                        "body": {
+                            "type": "string",
+                            "description": "SOLO 'informe': cuerpo en markup Typst (markdown-like): `= Título`, `== Subtítulo` para headings; `*negrita*`, `_cursiva_`; `- item` para listas; `$x^2$` para matemática. PROHIBIDO incluir `#set page`, `#set text` o `#pagebreak` — la plantilla controla la geometría."
+                        },
+                        "slides": {
+                            "type": "array",
+                            "description": "SOLO 'presentacion': array no vacío de slides.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "heading": {
+                                        "type": "string",
+                                        "description": "Título del slide."
+                                    },
+                                    "content": {
+                                        "type": "string",
+                                        "description": "Contenido del slide en markup Typst (sin overrides de `#set page`/`#set text`)."
+                                    }
+                                }
+                            }
+                        },
+                        "exercises": {
+                            "type": "array",
+                            "description": "SOLO 'tarea': array no vacío de ejercicios (uno por página).",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {
+                                        "type": "string",
+                                        "description": "Título del ejercicio."
+                                    },
+                                    "image_path": {
+                                        "type": "string",
+                                        "description": "Ruta ABSOLUTA al screenshot PNG del ejercicio."
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "required": ["doc_type", "title"]
+                }
+            },
             {
                 "name": "web_search",
                 "description": "Busca informacion en internet. Usa esto cuando necesites informacion actualizada, datos que no conoces, o cuando el usuario pida buscar algo online.",
@@ -2862,8 +2900,7 @@ fn tool_list_directory(args: &serde_json::Value) -> serde_json::Value {
     })
 }
 
-/// Genera un PDF a partir de contenido HTML.
-/// Intenta wkhtmltopdf → weasyprint → fallback a HTML.
+/// Abre un PDF con la app por defecto del SO (cross-platform: open/start/xdg-open).
 fn open_pdf_file(pdf_path: &std::path::Path) {
     let pdf_path_str = pdf_path.to_str().unwrap_or("");
     if pdf_path_str.is_empty() {
@@ -2889,77 +2926,6 @@ fn open_pdf_file(pdf_path: &std::path::Path) {
     match result {
         Ok(_) => eprintln!("[pdf] opened PDF successfully"),
         Err(e) => eprintln!("[pdf] failed to open PDF: {}", e),
-    }
-}
-
-fn tool_generate_pdf(args: &serde_json::Value) -> serde_json::Value {
-    let filename = args["filename"].as_str().unwrap_or("documento");
-    let html = args["html_content"].as_str().unwrap_or("");
-
-    if html.is_empty() {
-        return serde_json::json!({ "error": "No se proporciono contenido HTML" });
-    }
-
-    let downloads = dirs::download_dir()
-        .unwrap_or_else(|| dirs::home_dir().unwrap_or_default().join("Downloads"));
-
-    let safe_name: String = filename
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_' || *c == ' ')
-        .collect();
-    let safe_name = if safe_name.is_empty() { "documento".to_string() } else { safe_name };
-
-    let html_path = downloads.join(format!(".{}_temp.html", safe_name));
-    let pdf_path = downloads.join(format!("{}.pdf", safe_name));
-
-    eprintln!("[pdf] generating PDF via WeasyPrint: {}", pdf_path.display());
-
-    // Asegurar que el HTML tenga charset UTF-8
-    let html_with_charset = if html.contains("charset") {
-        html.to_string()
-    } else if html.contains("<head>") {
-        html.replace("<head>", "<head><meta charset=\"UTF-8\">")
-    } else {
-        format!("<!DOCTYPE html><html><head><meta charset=\"UTF-8\"></head><body>{}</body></html>", html)
-    };
-
-    if let Err(e) = std::fs::write(&html_path, &html_with_charset) {
-        return serde_json::json!({ "error": format!("Error escribiendo HTML: {}", e) });
-    }
-
-    // WeasyPrint: HTML+CSS directo a PDF con calidad profesional
-    let python_script = format!(
-        "from weasyprint import HTML; HTML(filename=r'{}', encoding='utf-8').write_pdf(r'{}'); import os; os.remove(r'{}'); print('OK')",
-        html_path.display(), pdf_path.display(), html_path.display()
-    );
-
-    let output = system_command("python3")
-        .args(&["-c", &python_script])
-        .output();
-
-    match output {
-        Ok(out) => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            let stderr = String::from_utf8_lossy(&out.stderr);
-            if out.status.success() && stdout.trim() == "OK" {
-                open_pdf_file(&pdf_path);
-                serde_json::json!({
-                    "success": true,
-                    "path": pdf_path.display().to_string(),
-                    "format": "pdf"
-                })
-            } else {
-                let _ = std::fs::remove_file(&html_path);
-                eprintln!("[pdf] WeasyPrint error: {}", stderr);
-                serde_json::json!({
-                    "error": format!("Error generando PDF: {}. Instala dependencias: brew install pango && pip3 install weasyprint", stderr)
-                })
-            }
-        }
-        Err(e) => {
-            let _ = std::fs::remove_file(&html_path);
-            serde_json::json!({"error": format!("python3 no disponible: {}", e)})
-        }
     }
 }
 
@@ -3475,7 +3441,7 @@ fn dispatch_tool(
         "create_file" => tool_create_file(args),
         "read_file" => tool_read_file(args),
         "list_directory" => tool_list_directory(args),
-        "generate_pdf" => tool_generate_pdf(args),
+        "create_pdf" => pdf::create_pdf(app, args),
         "web_search" => tool_web_search(args),
         "web_fetch" => tool_web_fetch(args),
         "get_study_history" => tool_get_study_history(app, args),
@@ -3842,11 +3808,11 @@ async fn call_gemini_streaming(
     use futures_util::StreamExt;
 
     // generationConfig (pdf-flow-fix 2026-04-10):
-    // - maxOutputTokens=32768 para soportar HTML grande en `create_file` y
+    // - maxOutputTokens=32768 para soportar contenido grande en `create_file` y
     //   respuestas largas con research+PDF en el mismo turno (antes 8192).
     // - thinkingBudget ya NO se setea a 0. El workaround del bug multi-turn
     //   `thought_signature` solo era necesario cuando forzábamos mode=ANY
-    //   sobre generate_pdf. Ahora que PDFs van via flow Unix con AUTO mode,
+    //   sobre el viejo tool de PDF. Ahora que los tools van bajo AUTO mode,
     //   dejamos que Gemini use thinking default — es safe en AUTO.
     //
     // thinkingConfig (thinking-visible-toggle 2026-04-10):
@@ -4138,8 +4104,8 @@ async fn agentic_loop(
     let mut compact_failures: u8 = 0; // Circuit breaker for compaction
 
     // Up to ~15 tool steps + up to 3 auto-continues + retries = 20 max iterations.
-    // Higher than 10 because Unix PDF flow (research + create_file + run_bash + weasyprint
-    // install fallback + open) can consume 10+ steps on its own.
+    // Higher than 10 because research-heavy flows (search_notes + list_documents +
+    // read_document + create_pdf with compile-error retries) can consume 10+ steps.
     for step in 0..20_u8 {
         // ── 0. Compact context if too large (with circuit breaker) ─────────
         compact_context(window, &mut contents, system_text, &mut compact_failures).await.ok();
@@ -4317,9 +4283,14 @@ async fn agentic_loop(
                     let path = tool_args["path"].as_str().unwrap_or("");
                     format!("Leyendo: {}", path)
                 },
-                "generate_pdf" => {
-                    let filename = tool_args["filename"].as_str().unwrap_or("documento");
-                    format!("Generando PDF: {}", filename)
+                "create_pdf" => {
+                    let doc_type = tool_args["doc_type"].as_str().unwrap_or("documento");
+                    let title = tool_args["title"].as_str().unwrap_or("");
+                    if title.is_empty() {
+                        format!("Generando PDF ({})…", doc_type)
+                    } else {
+                        format!("Generando PDF ({}): {}…", doc_type, title)
+                    }
                 },
                 "list_directory" => {
                     let path = tool_args["path"].as_str().unwrap_or(".");

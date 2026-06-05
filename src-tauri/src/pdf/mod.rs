@@ -25,10 +25,6 @@ use typst::foundations::{Dict, IntoValue};
 /// Entry point del tool `create_pdf`. Valida args por `doc_type`, compila el
 /// template correspondiente y escribe/abre el PDF. Devuelve siempre un
 /// `serde_json::Value` (éxito o `{ "error": ... }`), nunca entra en panic.
-///
-/// `#[allow(dead_code)]`: aún no enlazado al dispatch (eso es Fase 3). El `mod
-/// pdf;` de Fase 2.10 hace que el módulo compile, pero nadie lo llama todavía.
-#[allow(dead_code)]
 pub fn create_pdf(app: &tauri::AppHandle, args: &serde_json::Value) -> serde_json::Value {
     let doc_type = match args.get("doc_type").and_then(|v| v.as_str()) {
         Some(d) => d,

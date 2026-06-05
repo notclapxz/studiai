@@ -1,13 +1,12 @@
 // MarkdownContent.tsx — Renderer de markdown basado en marked + shiki + katex
-// Reemplaza a react-markdown. Usa:
-//   - marked                       (parser core)
+// Usa:
+//   - marked                       (parser core, gfm + breaks)
 //   - marked-shiki                 (syntax highlighting async via Shiki)
 //   - marked-katex-extension       (math inline + display)
 //   - DOMPurify                    (sanitización del HTML resultante)
 //   - morphdom                     (diff eficiente del DOM para streaming)
 //
-// Mantiene un LRU cache módulo-level de 200 entradas keyed por hash de contenido,
-// con fast path para texto plano sin caracteres de markdown.
+// Mantiene un LRU cache módulo-level de 200 entradas keyed por hash de contenido.
 
 import { useEffect, useRef } from "react";
 import { marked } from "marked";
@@ -93,16 +92,11 @@ function initMarked() {
 
   marked.setOptions({
     gfm: true,
-    breaks: false,
+    breaks: true,
   });
 
   markedInitialized = true;
 }
-
-// ─── Fast path para texto plano ─────────────────────────────────────────────
-// Si el contenido no tiene ningún carácter típico de markdown en sus primeros
-// 500 chars, saltamos el parser entero y escapamos + <br>.
-const MD_CHARS_REGEX = /[#*_`[\]|>~$\\]/;
 
 // ─── DOMPurify config ───────────────────────────────────────────────────────
 // Whitelist mínima para MathML que emite KaTeX, sin permitir nada peligroso.
@@ -168,13 +162,6 @@ async function renderMarkdown(content: string): Promise<string> {
   }
 
   initMarked();
-
-  // Fast path: texto plano sin caracteres de markdown
-  if (!MD_CHARS_REGEX.test(content.slice(0, 500))) {
-    const html = `<p>${escapeHtml(content).replace(/\n/g, "<br>")}</p>`;
-    cacheInsert(hash, html);
-    return html;
-  }
 
   const rawHtml = await marked.parse(content, { async: true });
   const clean = DOMPurify.sanitize(rawHtml, PURIFY_CONFIG) as unknown as string;

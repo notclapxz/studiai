@@ -352,7 +352,7 @@ function BurbujaMensaje({ mensaje }: BurbujaMensajeProps) {
           </>
         ) : (
           <div
-            className="text-sm leading-relaxed prose prose-sm prose-invert max-w-none"
+            className="text-sm leading-relaxed prose max-w-none"
             style={{ color: "var(--text-base)" }}
           >
             {/* Razonamiento visible — collapsible, arriba del contenido */}

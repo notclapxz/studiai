@@ -263,22 +263,22 @@ input::placeholder {
 
 /* ── Markdown rendering (marked + shiki) ─────────────────────── */
 .prose p {
-  margin-bottom: 0.5rem;
+  margin-bottom: 1rem;
 }
 .prose p:last-child {
   margin-bottom: 0;
 }
 .prose ul {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.875rem;
   margin-left: 1rem;
   list-style: disc;
 }
 .prose ul li + li,
 .prose ol li + li {
-  margin-top: 0.25rem;
+  margin-top: 0.35rem;
 }
 .prose ol {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.875rem;
   margin-left: 1rem;
   list-style: decimal;
 }

@@ -51,7 +51,10 @@ const EXAMPLE_FORMAT_HIERARCHY: &str = include_str!("prompts/examples/format-hie
 // mensaje del usuario implica obviamente un tool específico).
 
 /// Intents detectados por keyword matching en el mensaje del usuario.
-/// Orden de evaluación: WebSearch → ExamPrep → TaskHelp → Motivation → ConceptLearn → Conversational
+/// Orden de evaluación: WebSearch → ConceptLearn → ExamPrep → TaskHelp → CourseQuery → Motivation → Conversational
+///
+/// ConceptLearn va ANTES que ExamPrep para que "explícame X tengo examen" → explicación, no modo examen.
+/// CourseQuery captura preguntas sobre tareas/fechas/anuncios para que el modelo sepa responder tras el tool call.
 /// Spec: sdd/prompts-coach/spec — Domain 3
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MessageIntent {
@@ -67,6 +70,8 @@ enum MessageIntent {
     ConceptLearn,
     /// Motivación / bloqueo emocional: "no puedo", "me rindo", etc.
     Motivation,
+    /// Consulta sobre el curso: tareas, fechas, anuncios, notas.
+    CourseQuery,
 }
 
 #[derive(Debug, Clone)]
@@ -107,18 +112,31 @@ fn detect_intent(user_message: &str) -> MessageIntent {
         return MessageIntent::WebSearch;
     }
 
-    // 2. ExamPrep — modo examen o preparación para prueba
+    // 2. ConceptLearn — ANTES que ExamPrep para que "explícame X tengo examen"
+    //    → explicación, no modo examen. La intención de explicar gana siempre.
+    const CONCEPT_KEYWORDS: &[&str] = &[
+        "explícame", "explicame", "explicá", "explica",
+        "qué es", "que es", "cómo funciona", "como funciona",
+        "define", "qué significa", "que significa",
+        "entender", "aprendo", "para qué sirve", "para que sirve",
+    ];
+    if CONCEPT_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
+        return MessageIntent::ConceptLearn;
+    }
+
+    // 3. ExamPrep — solo si el usuario explícitamente pide prepararse/evaluarse
+    //    Nota: "tengo examen" solo NO activa esto — si hay "explícame" gana ConceptLearn.
     const EXAM_KEYWORDS: &[&str] = &[
         "modo examen", "examen mode", "prepárame para el examen",
-        "prepárame para examen", "quiero repasar", "tengo examen",
-        "practicar para", "preparar examen", "quiz", "pruébame",
-        "parcial", "repaso de",
+        "prepárame para examen", "quiero repasar", "practicar para",
+        "preparar examen", "quiz", "pruébame", "repaso de",
+        "hazme preguntas", "evalúame", "evalúa",
     ];
     if EXAM_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
         return MessageIntent::ExamPrep;
     }
 
-    // 3. TaskHelp — el estudiante pide que se complete una tarea
+    // 4. TaskHelp — el estudiante pide que se complete una tarea
     const TASK_KEYWORDS: &[&str] = &[
         "hazme", "haceme", "hacé", "haz ", "haz\t",
         "escríbeme", "escribime", "resolvé", "resuelve", "resolver",
@@ -130,7 +148,21 @@ fn detect_intent(user_message: &str) -> MessageIntent {
         return MessageIntent::TaskHelp;
     }
 
-    // 4. Motivation — bloqueo emocional o frustración
+    // 5. CourseQuery — preguntas sobre tareas, fechas, anuncios, notas del curso.
+    //    Garantiza que el modelo tenga instrucción de responder tras el tool call.
+    const COURSE_KEYWORDS: &[&str] = &[
+        "tarea", "tareas", "práctica", "practica", "prácticas",
+        "entrega", "entregar", "deadline", "vence", "vencimiento",
+        "anuncio", "anuncios", "nota", "notas", "calificación", "calificacion",
+        "evaluación", "evaluacion", "examen hoy", "examen mañana",
+        "qué tengo", "que tengo", "tengo hoy", "tengo mañana",
+        "cronograma", "horario", "semana", "hoy hay",
+    ];
+    if COURSE_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
+        return MessageIntent::CourseQuery;
+    }
+
+    // 6. Motivation — bloqueo emocional o frustración
     const MOTIVATION_KEYWORDS: &[&str] = &[
         "motivación", "motivacion", "no puedo", "me rindo",
         "estoy agotado", "ayúdame a motivarme", "no entiendo nada",
@@ -140,18 +172,7 @@ fn detect_intent(user_message: &str) -> MessageIntent {
         return MessageIntent::Motivation;
     }
 
-    // 5. ConceptLearn — quiere entender o aprender un concepto
-    const CONCEPT_KEYWORDS: &[&str] = &[
-        "explícame", "explicame", "explicá", "explica",
-        "qué es", "que es", "cómo funciona", "como funciona",
-        "define", "qué significa", "que significa",
-        "entender", "aprendo",
-    ];
-    if CONCEPT_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
-        return MessageIntent::ConceptLearn;
-    }
-
-    // 6. Conversational — fallback
+    // 7. Conversational — fallback
     MessageIntent::Conversational
 }
 
@@ -205,13 +226,15 @@ fn build_system_prompt(ctx: &RuntimeContext) -> String {
         out.push_str(course_ctx);
     }
 
-    // Instrucción de uso del sílabo — se activa cuando el CONTEXTO AUTOMATICO incluye el sílabo
-    out.push_str("\n\n## Uso del sílabo\n\n");
-    out.push_str("Si el CONTEXTO AUTOMATICO incluye un [Sílabo del curso], úsalo para:\n");
-    out.push_str("- Responder preguntas sobre el programa del curso, unidades, fechas de evaluaciones y prácticas SIN necesitar que el estudiante lo pida explícitamente\n");
-    out.push_str("- Al inicio del chat (primer mensaje), orientar brevemente al estudiante sobre el estado del curso según el sílabo (próximas evaluaciones, tema actual de la semana) en 1-2 líneas — sin dump completo\n");
-    out.push_str("- Si el estudiante pregunta 'cuándo es el examen' o 'qué entra en la práctica', consultar PRIMERO el sílabo inyectado antes de usar search_notes\n");
-    out.push_str("Si NO hay sílabo en el contexto, NO inventes fechas ni cronogramas — usá search_notes para buscar en los materiales del curso\n");
+    // Instrucción de uso del sílabo — solo cuando el usuario pregunta sobre eso
+    out.push_str("\n\n## Uso del sílabo y contexto del curso\n\n");
+    out.push_str("El CONTEXTO AUTOMÁTICO puede incluir tareas, anuncios y sílabo del curso. Reglas de uso:\n");
+    out.push_str("- Usa ese contexto SOLO si el usuario pregunta directamente sobre fechas, tareas, anuncios, evaluaciones o el programa del curso\n");
+    out.push_str("- En el PRIMER mensaje del chat: si hay sílabo, menciona en 1-2 líneas lo más relevante próximo (evaluación o tema de la semana)\n");
+    out.push_str("- En mensajes siguientes: NO menciones tareas, anuncios ni fechas salvo que el usuario lo pida\n");
+    out.push_str("- NUNCA mezcles una explicación de concepto con recordatorios o fechas del curso\n");
+    out.push_str("- Si el usuario pregunta 'cuándo es el examen' o 'qué entra en la práctica', consulta PRIMERO el sílabo inyectado\n");
+    out.push_str("- Si NO hay sílabo, NO inventes fechas ni cronogramas — usa search_notes\n");
 
     // 4. Mini-prompt pedagógico según intent detectado en este turno
     // Conversational no agrega bloque extra — sin overhead innecesario
@@ -229,7 +252,10 @@ fn build_system_prompt(ctx: &RuntimeContext) -> String {
             "El estudiante está frustrado. Validá brevemente (sin dramatizar) y redirigí hacia una acción concreta."
         ),
         MessageIntent::ConceptLearn => Some(
-            "El estudiante quiere aprender un concepto. Explicá con claridad y, si no entiende, cambiá el enfoque completamente."
+            "El usuario pide una explicación. REGLAS ESTRICTAS sin excepciones: (1) definición técnica directa en 1-2 oraciones, (2) máximo 1 ejemplo de código si aporta, (3) CERO listas, (4) CERO analogías — ni de casas, ni de buzones, ni de ningún tipo — aunque el contexto sea examen, (5) CERO secciones extra. Formato final: definición → ejemplo. Nada más."
+        ),
+        MessageIntent::CourseQuery => Some(
+            "El usuario pregunta sobre su curso (tareas, fechas, anuncios). Usá get_upcoming_deadlines o search_notes si necesitás datos. Luego respondé directamente al usuario con la info — no vuelvas a llamar tools."
         ),
         MessageIntent::Conversational => None,
     };
@@ -288,6 +314,7 @@ fn build_tool_config(intent: MessageIntent) -> Option<ToolConfig> {
         | MessageIntent::TaskHelp
         | MessageIntent::ExamPrep
         | MessageIntent::ConceptLearn
+        | MessageIntent::CourseQuery
         | MessageIntent::Motivation => None,
     }
 }
@@ -4587,7 +4614,35 @@ async fn generate_session_summary(
 //   2. Tareas próximas (deadlines en los próximos 7 días)
 //   3. Anuncios recientes de Canvas (últimos 3 días)
 
-async fn gather_async_attachments(app: &tauri::AppHandle, active_course_id: Option<i64>) -> String {
+/// Devuelve true si el mensaje del usuario es sobre el curso (fechas, tareas, anuncios, evaluaciones).
+/// Si no lo es, no tiene sentido inyectar el contexto de Canvas — el modelo lo usará igual.
+fn is_course_query(msg: &str) -> bool {
+    let m = msg.to_lowercase();
+    const COURSE_KEYWORDS: &[&str] = &[
+        // tareas / entregas
+        "tarea", "práctica", "practica", "entrega", "deadline", "vence", "vencimiento",
+        "entregar", "tengo que entregar", "plazo",
+        // evaluaciones
+        "examen", "parcial", "nota", "calificación", "calificacion", "evaluación", "evaluacion",
+        "ea1", "ea2", "ef", "ep", "quiz", "prueba",
+        // anuncios / curso
+        "anuncio", "canvas", "clase", "curso", "semana", "cronograma", "horario",
+        "sílabo", "silabo", "syllabus", "programa del curso",
+        // preguntas temporales sobre el curso
+        "cuándo", "cuando", "qué entra", "que entra", "qué hay", "que hay",
+        "hoy tengo", "esta semana", "próxima semana", "proxima semana",
+    ];
+    COURSE_KEYWORDS.iter().any(|kw| m.contains(kw))
+}
+
+async fn gather_async_attachments(app: &tauri::AppHandle, active_course_id: Option<i64>, user_message: &str) -> String {
+    // Si el mensaje no es sobre el curso, no inyectamos nada.
+    // "El mejor contexto es el que no envías" — evita que el modelo mezcle
+    // teoría académica con anuncios/fechas por proximidad en el prompt.
+    if !is_course_query(user_message) {
+        return String::new();
+    }
+
     let mut attachments: Vec<String> = Vec::new();
 
     if let Ok(conn) = open_db(app) {
@@ -4721,7 +4776,7 @@ async fn gather_async_attachments(app: &tauri::AppHandle, active_course_id: Opti
         String::new()
     } else {
         format!(
-            "\n\nCONTEXTO AUTOMATICO:\n{}",
+            "\n\n[CONTEXTO DEL CURSO — USAR SOLO SI EL USUARIO PREGUNTÓ SOBRE FECHAS, TAREAS, ANUNCIOS O EVALUACIONES]\n{}",
             attachments.join("\n\n")
         )
     }
@@ -4823,9 +4878,9 @@ async fn send_chat_message(
         })
         .collect();
 
-    // ── 3. Async attachments — inyectar contexto automático ─────────────────
+    // ── 3. Async attachments — inyectar contexto automático SOLO si la query es sobre el curso ──
     // Incluye: sesiones previas, tareas próximas, anuncios recientes, sílabo del curso activo
-    let attachments = gather_async_attachments(&app, active_course_id).await;
+    let attachments = gather_async_attachments(&app, active_course_id, last_user_text).await;
     let system_text = format!("{}{}", system_text, attachments);
 
     // ── 4. Ejecutar el loop agéntico ──────────────────────────────────────────

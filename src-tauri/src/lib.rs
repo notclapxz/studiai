@@ -253,7 +253,7 @@ fn build_system_prompt(ctx: &RuntimeContext) -> String {
             "El estudiante está frustrado. Validá brevemente (sin dramatizar) y redirigí hacia una acción concreta."
         ),
         MessageIntent::ConceptLearn => Some(
-            "El usuario pide una explicación. REGLAS ESTRICTAS sin excepciones: (1) definición técnica directa en 1-2 oraciones, (2) máximo 1 ejemplo de código si aporta, (3) CERO listas, (4) CERO analogías — ni de casas, ni de buzones, ni de ningún tipo — aunque el contexto sea examen, (5) CERO secciones extra. Formato final: definición → ejemplo. Nada más."
+            "El estudiante pide una explicación. Empieza por la definición directa en 1-2 oraciones y un ejemplo, de código si aplica. Mantente conciso. Agrega estructura solo si el tema tiene partes claras que navegar, y una analogía solo si no engancha con lo anterior o la pide."
         ),
         MessageIntent::CourseQuery => Some(
             "El usuario pregunta sobre su curso (tareas, fechas, anuncios). Usa get_upcoming_deadlines o search_notes si necesitas datos. Luego responde directamente al usuario con la info — no vuelvas a llamar tools."

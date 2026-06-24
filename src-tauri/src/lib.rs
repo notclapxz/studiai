@@ -3934,6 +3934,9 @@ async fn call_gemini_streaming(
     let mut buffer = String::new();
 
     let mut stream_error: Option<String> = None;
+    // usageMetadata del último chunk — para monitorear el cache hit (solo log,
+    // por request, no se persiste). Verifica que el implicit caching pega.
+    let mut usage_metadata: Option<serde_json::Value> = None;
 
     while let Some(chunk_result) = stream.next().await {
         let chunk = match chunk_result {
@@ -3977,6 +3980,11 @@ async fn call_gemini_streaming(
                 return Err(format!(
                     "Gemini bloqueó la solicitud (razón: {reason}). Intenta reformular tu pregunta."
                 ));
+            }
+
+            // usageMetadata llega típicamente en el último chunk; guardamos el más reciente.
+            if let Some(u) = json.get("usageMetadata") {
+                usage_metadata = Some(u.clone());
             }
 
             // Inspeccionar parts[] — detectar functionCall AQUÍ, no solo por finishReason
@@ -4036,6 +4044,9 @@ async fn call_gemini_streaming(
     if remaining.starts_with("data: ") {
         let data = &remaining[6..];
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(data) {
+            if let Some(u) = json.get("usageMetadata") {
+                usage_metadata = Some(u.clone());
+            }
             let parts = &json["candidates"][0]["content"]["parts"];
             if let Some(arr) = parts.as_array() {
                 for part in arr {
@@ -4058,6 +4069,23 @@ async fn call_gemini_streaming(
                 }
             }
         }
+    }
+
+    // Monitoreo de cache (solo log, por request): qué fracción del input vino
+    // del implicit cache de Gemini. Sirve para verificar que el caching pega y
+    // estimar el ahorro; no se persiste ni se asocia a ningún usuario.
+    if let Some(u) = &usage_metadata {
+        let prompt = u["promptTokenCount"].as_u64().unwrap_or(0);
+        let cached = u["cachedContentTokenCount"].as_u64().unwrap_or(0);
+        let output = u["candidatesTokenCount"].as_u64().unwrap_or(0);
+        let pct = if prompt > 0 {
+            (cached as f64 / prompt as f64) * 100.0
+        } else {
+            0.0
+        };
+        eprintln!(
+            "[gemini:usage] prompt={prompt} cacheado={cached} ({pct:.0}%) salida={output}"
+        );
     }
 
     // Construir las parts del modelo para agregar a contents

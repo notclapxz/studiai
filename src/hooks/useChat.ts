@@ -231,6 +231,8 @@ export function useChat({
 
     // Helper para limpiar TODOS los listeners de una vez
     let cleanup: (() => void) | null = null;
+    // Timer de seguridad contra cuelgues sin evento terminal (ver watchdog abajo)
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
 
     // Registrar TODOS los listeners en paralelo antes de invocar
     const [unlistenChunk, unlistenThought, unlistenThinking, unlistenDone, unlistenError] = await Promise.all([
@@ -432,12 +434,51 @@ export function useChat({
 
     // Asignar cleanup después de que todos los listeners estén registrados
     cleanup = () => {
+      if (watchdog) {
+        clearTimeout(watchdog);
+        watchdog = null;
+      }
       unlistenChunk();
       unlistenThought();
       unlistenThinking();
       unlistenDone();
       unlistenError();
     };
+
+    // ── Watchdog: red de seguridad contra cuelgues sin evento terminal ──────
+    // Si el backend nunca emite chat-stream-done/-error (p. ej. una tool que
+    // bloquea el agentic loop), `cargando` quedaría en true para siempre y la
+    // UI se congelaría SIN error visible. Tope absoluto: pasado el límite,
+    // forzamos el mismo cierre que la rama de error. 240s deja margen para
+    // respuestas largas con varias tools (cada request a Gemini ya se corta
+    // a 120s en el backend). done/error/catch limpian este timer vía cleanup().
+    const WATCHDOG_MS = 240_000;
+    watchdog = setTimeout(() => {
+      if (errorHandled) return;
+      errorHandled = true;
+      console.error(
+        `[chat] Watchdog: sin evento terminal en ${WATCHDOG_MS}ms — reseteando estado`
+      );
+      setMensajes((prev) => {
+        const cleaned = prev.filter((m) => !(m.id === iaId && !m.contenido));
+        const updated = cleaned.map((m) =>
+          m.id === iaId ? { ...m, streaming: false, thinkingStatus: undefined } : m
+        );
+        return [
+          ...updated,
+          {
+            id: `error-${Date.now()}`,
+            rol: "asistente" as const,
+            contenido: "La respuesta tardó demasiado y se canceló. Intenta de nuevo.",
+            timestamp: new Date(),
+            streaming: false,
+            errorType: "generico" as ErrorType,
+          },
+        ];
+      });
+      setCargando(false);
+      cleanup?.();
+    }, WATCHDOG_MS);
 
     // ── 2b. Resize imagenes si existen (reduce tokens en Gemini) ──────────
     let imagesPayload: { base64: string; mediaType: string }[] | null = null;

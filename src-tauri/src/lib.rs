@@ -3157,37 +3157,70 @@ fn tool_web_search(args: &serde_json::Value) -> serde_json::Value {
     let max_attempts: u8 = 3;
     let body: String = loop {
         attempts += 1;
+        // `-w "\n%{http_code}"` añade el código HTTP final en la última línea
+        // del stdout. Es CLAVE: sin esto sólo veríamos el exit code de curl, que
+        // es 0 incluso cuando DuckDuckGo responde 202/429 (challenge/rate-limit)
+        // con una página sin resultados — y el retry de abajo nunca se dispararía.
         let curl_result = system_command("curl")
             .args(&[
                 "-sL",
                 "--max-time", "30",
-                "-A", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)",
+                "--connect-timeout", "10",
+                "-A", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "-w", "\n%{http_code}",
                 &url,
             ])
             .output();
 
-        match curl_result {
-            Ok(out) if out.status.success() && !out.stdout.is_empty() => {
-                break String::from_utf8_lossy(&out.stdout).to_string();
+        // Separar el cuerpo del código HTTP (última línea por el -w de arriba).
+        let (raw, http_code): (String, u16) = match &curl_result {
+            Ok(out) if out.status.success() => {
+                let s = String::from_utf8_lossy(&out.stdout).to_string();
+                match s.rfind('\n') {
+                    Some(nl) => {
+                        let code = s[nl + 1..].trim().parse::<u16>().unwrap_or(0);
+                        (s[..nl].to_string(), code)
+                    }
+                    None => (s, 0),
+                }
             }
-            _ if attempts < max_attempts => {
-                // Backoff exponencial: 500ms, 1500ms, 4500ms
-                let delay_ms = 500u64 * 3u64.pow(attempts as u32 - 1);
-                eprintln!(
-                    "[tool:web_search] intento {}/{} falló, reintentando en {}ms",
-                    attempts, max_attempts, delay_ms
-                );
-                std::thread::sleep(std::time::Duration::from_millis(delay_ms));
-                continue;
-            }
-            _ => {
-                eprintln!("[tool:web_search] agotados {} intentos", max_attempts);
-                return serde_json::json!({
-                    "error": "La búsqueda web no está disponible temporalmente. Intenta de nuevo en unos segundos.",
-                    "results": []
-                });
-            }
+            _ => (String::new(), 0), // fallo de proceso/red (curl exit != 0)
+        };
+
+        // Bloqueos transitorios que SÍ ameritan reintento (no "sin resultados").
+        let blocked = matches!(http_code, 202 | 403 | 429 | 500 | 502 | 503);
+        let ok = http_code == 200 && !raw.is_empty();
+
+        if ok {
+            break raw;
         }
+
+        if attempts < max_attempts {
+            // Backoff exponencial: 500ms, 1500ms, 4500ms
+            let delay_ms = 500u64 * 3u64.pow(attempts as u32 - 1);
+            eprintln!(
+                "[tool:web_search] intento {}/{} sin éxito (http={}, blocked={}), reintentando en {}ms",
+                attempts, max_attempts, http_code, blocked, delay_ms
+            );
+            std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+            continue;
+        }
+
+        eprintln!(
+            "[tool:web_search] agotados {} intentos (último http={})",
+            max_attempts, http_code
+        );
+        // Distinguir rate-limit de caída para que el modelo sepa si reintentar.
+        let msg = if blocked {
+            "El buscador limitó temporalmente las solicitudes (rate limit). Espera unos segundos y vuelve a intentar la búsqueda."
+        } else {
+            "La búsqueda web no está disponible temporalmente. Intenta de nuevo en unos segundos."
+        };
+        return serde_json::json!({
+            "error": msg,
+            "results": [],
+            "rate_limited": blocked
+        });
     };
 
     let results = parse_ddg_results(&body);
@@ -3260,7 +3293,7 @@ fn tool_web_fetch(args: &serde_json::Value) -> serde_json::Value {
     eprintln!("[tool:web_fetch] url={}", url);
 
     let output = system_command("curl")
-        .args(&["-sL", "--max-time", "30", "-A", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", url])
+        .args(&["-sL", "--max-time", "30", "--connect-timeout", "10", "-A", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)", url])
         .output();
 
     match output {
@@ -4310,51 +4343,88 @@ async fn agentic_loop(
             window.emit("chat-stream-thinking", &thinking_msg).ok();
         }
 
-        // Ejecutar tools en paralelo usando thread::scope (con hooks pre/post)
+        // Ejecutar tools en paralelo, con un timeout por lote (hooks pre/post).
         let app_handle = app.clone();
         let window_ref = window.clone();
         // Session key para aislar CWD per-chat (usa el label de la ventana).
         let session_key = window_ref.label().to_string();
-        let results: Vec<(String, serde_json::Value)> = std::thread::scope(|s| {
-            let handles: Vec<_> = tool_calls.iter().map(|(name, args)| {
-                let name = name.clone();
-                let args = args.clone();
-                let app_ref = &app_handle;
-                let win = &window_ref;
-                let sess_key = session_key.as_str();
-                s.spawn(move || {
-                    // Pre-tool hook
-                    pre_tool_hook(win, &name, &args);
-                    let start_time = std::time::Instant::now();
+        let results: Vec<(String, serde_json::Value)> = {
+            use std::sync::mpsc;
+            // NO usamos std::thread::scope: ese joinea TODOS los hilos al cerrar el
+            // scope, así que una tool colgada (p. ej. un curl que no respeta su
+            // --max-time) bloquearía el agentic loop —y con él el StreamDoneGuard—
+            // para siempre, dejando el chat congelado sin evento terminal. Con
+            // hilos 'static + recv_timeout, una tool que se pasa del límite se
+            // ABANDONA y el loop continúa, garantizando que `chat-stream-done`
+            // siempre se emita. El curl subyacente ya está acotado por --max-time.
+            const TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 
-                    // Execute tool
-                    let result = dispatch_tool(app_ref, sess_key, &name, &args, active_course_id);
-
-                    // Post-tool hook
-                    let duration_ms = start_time.elapsed().as_millis();
-                    post_tool_hook(win, app_ref, &name, &args, &result, duration_ms);
-
-                    (name, result)
+            let receivers: Vec<(String, mpsc::Receiver<serde_json::Value>)> = tool_calls
+                .iter()
+                .map(|(name, args)| {
+                    let name = name.clone();
+                    let args = args.clone();
+                    let app_owned = app_handle.clone();
+                    let win_owned = window_ref.clone();
+                    let sess_owned = session_key.clone();
+                    let course = active_course_id;
+                    let name_for_thread = name.clone();
+                    let (tx, rx) = mpsc::channel();
+                    std::thread::spawn(move || {
+                        pre_tool_hook(&win_owned, &name_for_thread, &args);
+                        let start_time = std::time::Instant::now();
+                        // catch_unwind: un panic en la tool no debe dejar el canal
+                        // cerrado sin respuesta (el loop quedaría a ciegas).
+                        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            dispatch_tool(&app_owned, sess_owned.as_str(), &name_for_thread, &args, course)
+                        }))
+                        .unwrap_or_else(|panic_info| {
+                            let panic_msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
+                                s.to_string()
+                            } else if let Some(s) = panic_info.downcast_ref::<String>() {
+                                s.clone()
+                            } else {
+                                "unknown panic".to_string()
+                            };
+                            eprintln!("[agentic] Tool '{}' panicked: {}", name_for_thread, panic_msg);
+                            serde_json::json!({"error": format!("Tool panicked: {}", panic_msg)})
+                        });
+                        let duration_ms = start_time.elapsed().as_millis();
+                        post_tool_hook(&win_owned, &app_owned, &name_for_thread, &args, &result, duration_ms);
+                        let _ = tx.send(result);
+                    });
+                    (name, rx)
                 })
-            }).collect();
+                .collect();
 
-            handles.into_iter().map(|h| {
-                match h.join() {
-                    Ok(result) => result,
-                    Err(panic_info) => {
-                        let panic_msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
-                            s.to_string()
-                        } else if let Some(s) = panic_info.downcast_ref::<String>() {
-                            s.clone()
-                        } else {
-                            "unknown panic".to_string()
-                        };
-                        eprintln!("[agentic] Tool thread panicked: {}", panic_msg);
-                        ("panicked_tool".to_string(), serde_json::json!({"error": format!("Tool panicked: {}", panic_msg)}))
+            // Deadline GLOBAL del lote: los hilos ya corren en paralelo, así que
+            // esperamos a lo sumo TOOL_TIMEOUT en total, no por cada tool.
+            let deadline = std::time::Instant::now() + TOOL_TIMEOUT;
+            receivers
+                .into_iter()
+                .map(|(name, rx)| {
+                    let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                    match rx.recv_timeout(remaining) {
+                        Ok(result) => (name, result),
+                        Err(mpsc::RecvTimeoutError::Timeout) => {
+                            eprintln!(
+                                "[agentic] Tool '{}' excedió el timeout de {}s — abandonada",
+                                name, TOOL_TIMEOUT.as_secs()
+                            );
+                            let msg = format!(
+                                "La herramienta '{}' tardó demasiado y se canceló. Intenta una alternativa.",
+                                name
+                            );
+                            (name, serde_json::json!({"error": msg}))
+                        }
+                        Err(mpsc::RecvTimeoutError::Disconnected) => {
+                            eprintln!("[agentic] Tool '{}' terminó sin enviar resultado (hilo caído)", name);
+                            (name.clone(), serde_json::json!({"error": format!("La herramienta '{}' no devolvió resultado.", name)}))
+                        }
                     }
-                }
-            }).collect()
-        });
+                })
+                .collect()
+        };
 
         // Construir tool_response_parts con detección de is_error
         let mut tool_response_parts: Vec<serde_json::Value> = Vec::new();

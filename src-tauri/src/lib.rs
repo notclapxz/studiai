@@ -45,6 +45,14 @@ const EXAMPLE_PDF_GENERATION: &str = include_str!("prompts/examples/pdf-generati
 const EXAMPLE_TOOL_USE: &str = include_str!("prompts/examples/tool-use.txt");
 const EXAMPLE_FORMAT_HIERARCHY: &str = include_str!("prompts/examples/format-hierarchy.txt");
 
+// ─── Modelos Gemini ───────────────────────────────────────────────────────────
+// Ruteo ESTRUCTURAL por función del código (no por clasificar el mensaje, que
+// sería frágil): el chat y el OCR usan el modelo de calidad; las tareas internas
+// triviales (resumen de sesión, compactación de contexto) usan Flash-Lite —
+// más barato y rápido, sin tocar la calidad de la conversación.
+const GEMINI_MODEL_CHAT: &str = "gemini-2.5-flash";
+const GEMINI_MODEL_UTILITY: &str = "gemini-2.5-flash-lite";
+
 // ─── Runtime context ─────────────────────────────────────────────────────────
 // Se computa una vez por request en send_chat_message() y alimenta el builder
 // del system prompt (fecha/OS/curso activo).
@@ -763,10 +771,10 @@ async fn ocr_pdf_with_gemini(pdf_path: &std::path::Path) -> Result<String, Strin
         }
     });
 
-    let url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_CHAT}:generateContent");
 
     let response = client
-        .post(url)
+        .post(&url)
         .header("x-goog-api-key", GEMINI_API_KEY)
         .header("content-type", "application/json")
         .json(&body)
@@ -3463,7 +3471,7 @@ async fn call_compact_api(messages_to_summarize: &[serde_json::Value]) -> Result
         }
     });
 
-    let url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_UTILITY}:generateContent");
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
@@ -3693,7 +3701,7 @@ async fn call_gemini_streaming(
         "generationConfig": generation_config
     });
 
-    let url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse";
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_CHAT}:streamGenerateContent?alt=sse");
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
@@ -4421,7 +4429,7 @@ async fn generate_session_summary(
         })
     }; // conn and stmt dropped here — safe to await below
 
-    let url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+    let url = format!("https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL_UTILITY}:generateContent");
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))

@@ -1,0 +1,40 @@
+# promptfoo — harness de evaluación del prompt del tutor StudiAI.
+# Correr:  cd evals && GEMINI_API_KEY=xxx bunx promptfoo eval && bunx promptfoo view
+#
+# Mide regresiones cada vez que tocas el prompt: voz (anti-voseo), español
+# neutro, longitud/estructura y pedagogía. Los asserts deterministas son $0;
+# los llm-rubric usan a Gemini como juez (un par de centavos por corrida).
+
+description: "StudiAI — golden set del tutor (voz, formato, pedagogía)"
+
+prompts:
+  - file://build-system-prompt.mjs
+
+providers:
+  - id: google:gemini-2.5-flash
+    label: actual-2.5-flash
+    config:
+      generationConfig:
+        maxOutputTokens: 800
+        temperature: 0.3
+  # A/B: descomenta para comparar el rediseño contra otro modelo lado a lado.
+  # - id: google:gemini-3.5-flash
+  #   label: candidato-3.5-flash
+  #   config:
+  #     generationConfig:
+  #       maxOutputTokens: 800
+  #       temperature: 0.3
+
+defaultTest:
+  options:
+    # El juez de los llm-rubric usa Gemini para no requerir una API key de OpenAI.
+    provider: google:gemini-2.5-flash
+  assert:
+    # Determinista, $0 — corta el voseo en cualquier respuesta.
+    - type: javascript
+      value: file://asserts/no-voseo.js
+    # Registro de español neutro (juez LLM).
+    - type: llm-rubric
+      value: "Responde en español neutro con trato de 'tú' (registro universitario peruano). No usa voseo rioplatense ni modismos de otro país."
+
+tests: file://golden-set.yaml

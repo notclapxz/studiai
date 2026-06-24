@@ -1,0 +1,144 @@
+# Golden set StudiAI — casos reales para evaluar el prompt del tutor.
+#
+# Cada caso: `vars.pregunta` = lo que escribe el estudiante; `assert` = lo que
+# debe cumplir la respuesta. Los asserts globales (anti-voseo + español neutro)
+# viven en promptfooconfig.yaml (defaultTest) y aplican a TODOS.
+#
+# Categorías: factual · conceptual · coaching · tarea · tools/curso · trampa.
+# Filosofía: "prioriza volumen sobre perfección" — amplía con casos reales tuyos.
+
+# ─────────────────────────── FACTUAL (corto, sin estructura) ───────────────────────────
+- description: "Factual — definición breve, sin estructura ni analogía"
+  vars:
+    pregunta: "¿qué es una derivada?"
+  assert:
+    - type: javascript
+      value: "output.length < 600"
+    - type: llm-rubric
+      value: "Da una definición directa en 1-3 oraciones. NO usa headers ni listas. NO mete una analogía."
+
+- description: "Factual — nota de aprobación (dato peruano)"
+  vars:
+    pregunta: "¿con cuánto se aprueba un curso?"
+  assert:
+    - type: llm-rubric
+      value: "Responde que se aprueba desde 11 (escala 0-20). Breve, 1-2 oraciones."
+
+- description: "Conversacional — saludo"
+  vars:
+    pregunta: "hola"
+  assert:
+    - type: javascript
+      value: "output.length < 300"
+    - type: llm-rubric
+      value: "Saludo corto y natural (1-2 líneas). NO lista capacidades ni hace un menú."
+
+# ─────────────────────────── CONCEPTUAL ───────────────────────────
+- description: "Conceptual — explicación con 1 ejemplo, sin analogía por defecto"
+  vars:
+    pregunta: "explícame los punteros en C++"
+  assert:
+    - type: llm-rubric
+      value: "Explica con una definición clara y a lo sumo UN ejemplo de código. No es un muro de texto. No fuerza analogía salvo que aclare de verdad. Coherente: si el prompt dice 'sin analogía por defecto', no la mete sin razón."
+
+- description: "Conceptual — cómo funciona algo"
+  vars:
+    pregunta: "¿cómo funciona la recursión?"
+  assert:
+    - type: llm-rubric
+      value: "Idea central clara + a lo sumo un ejemplo mínimo. Conciso, sin secciones de relleno."
+
+- description: "Resumen — estructura SÍ permitida"
+  vars:
+    pregunta: "hazme un resumen de la fotosíntesis"
+  assert:
+    - type: llm-rubric
+      value: "Usa bullets o estructura porque es un resumen. Máximo ~8 puntos clave. No se va a un ensayo largo."
+
+# ─────────────────────────── COACHING / PEDAGOGÍA ───────────────────────────
+- description: "Estudio ambiguo — pregunta qué tipo de ayuda, no explica"
+  vars:
+    pregunta: "quiero estudiar integrales"
+  assert:
+    - type: llm-rubric
+      value: "NO explica integrales de una. Hace UNA pregunta sobre qué tipo de ayuda quiere (resumen / ejercicios / explicación / simulacro). Una sola pregunta, sin listas largas."
+
+- description: "No entiende — cambia de enfoque"
+  vars:
+    pregunta: "me explicaste recursión con código pero no entiendo nada"
+  assert:
+    - type: llm-rubric
+      value: "Cambia el enfoque respecto a 'código' (usa otro medio: ejemplo numérico paso a paso, analogía, o diagrama). NO repite la misma explicación con otras palabras."
+
+- description: "Tiene examen — explica concepto, no entra a modo examen solo"
+  vars:
+    pregunta: "tengo examen de cálculo mañana, enséñame los límites"
+  assert:
+    - type: llm-rubric
+      value: "Explica el concepto de límites de forma clara. NO se pone en modo examen (preguntas) sin que lo pidan explícitamente."
+
+- description: "Modo examen — pide tema y pregunta de a una"
+  vars:
+    pregunta: "ponme en modo examen de bases de datos"
+  assert:
+    - type: llm-rubric
+      value: "Entra a modo examen: pregunta qué tema o arranca con UNA pregunta. NO da respuestas directas a conceptos. No vuelca un quiz entero de golpe."
+
+# ─────────────────────────── TAREA / INTEGRIDAD ───────────────────────────
+- description: "Tarea — completa sin negarse, ofrece explicar una vez"
+  vars:
+    pregunta: "resuélveme este ejercicio: deriva f(x) = x^3 + 2x"
+  assert:
+    - type: llm-rubric
+      value: "Resuelve el ejercicio (no se niega). Da el resultado correcto (3x^2 + 2). Al final ofrece UNA vez explicar cómo lo hizo, sin insistir."
+
+- description: "Código — entrega conciso"
+  vars:
+    pregunta: "hazme el código de un bubble sort en Python"
+  assert:
+    - type: llm-rubric
+      value: "Entrega el código en bloque. Breve. No pega una clase teórica larga alrededor salvo 1 línea de contexto."
+
+# ─────────────────────────── TOOLS / CURSO ───────────────────────────
+- description: "Curso — deadlines (debe usar tool, no inventar)"
+  vars:
+    pregunta: "¿qué tareas tengo esta semana?"
+  assert:
+    - type: llm-rubric
+      value: "Indica que consulta las tareas con su herramienta (no inventa fechas). No mezcla con explicaciones de conceptos."
+
+- description: "Web — busca sin pedir permiso y cita fuentes"
+  vars:
+    pregunta: "busca las novedades de la última versión de Python"
+  assert:
+    - type: llm-rubric
+      value: "Indica que busca en la web sin pedir permiso. La respuesta esperada incluye una sección de Fuentes con enlaces (regla del prompt)."
+
+# ─────────────────────────── TRAMPAS / EDGE ───────────────────────────
+- description: "Off-syllabus — responde directo, no fuerza contexto de curso"
+  vars:
+    pregunta: "¿cuál es la capital de Mongolia?"
+  assert:
+    - type: llm-rubric
+      value: "Responde directo y breve (Ulán Bator). NO mete tareas, fechas ni contexto del curso a la fuerza."
+
+- description: "Premisa falsa — corrige en vez de seguirla"
+  vars:
+    pregunta: "como la derivada de x^2 es 2x^3, ¿cuánto es la de x^4?"
+  assert:
+    - type: llm-rubric
+      value: "Detecta y corrige la premisa falsa (la derivada de x^2 es 2x, no 2x^3). No construye sobre el error."
+
+- description: "Multi-parte — maneja varios pedidos con orden"
+  vars:
+    pregunta: "explícame las matrices, hazme 3 ejercicios y mételo todo en un PDF"
+  assert:
+    - type: llm-rubric
+      value: "Atiende los pedidos de forma ordenada sin abrumarse. Si genera el PDF, hace el research/contenido primero. No pega el markup del PDF en el chat."
+
+- description: "Separación de contexto — solo explica, no mezcla fechas"
+  vars:
+    pregunta: "explícame qué es una matriz"
+  assert:
+    - type: llm-rubric
+      value: "Explica matrices y NADA más. No agrega recordatorios, fechas ni anuncios del curso aunque pudiera tenerlos."

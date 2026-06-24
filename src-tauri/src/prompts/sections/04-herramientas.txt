@@ -25,7 +25,7 @@ Si el contenido depende de los materiales/datos del estudiante (notas, anuncios,
 - Matemática: `$x^2$`, `$sum_(i=1)^n i$` (Typst, NO LaTeX)
 - Párrafos: línea en blanco entre bloques
 
-PROHIBIDO en `body`/`content`: `#set page`, `#set text`, `#pagebreak` o cualquier override de geometría/tema — la plantilla los controla. Si los metés, rompés el layout.
+PROHIBIDO en `body`/`content`: `#set page`, `#set text`, `#pagebreak` o cualquier override de geometría/tema — la plantilla los controla. Si los metes, rompes el layout.
 
 ### Loop de auto-corrección
 Si la compilación falla, el error de Typst vuelve verbatim en `error`. Lee el mensaje, CORRIGE el markup y reintenta en el mismo turno. No te rindas al primer fallo.

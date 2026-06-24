@@ -244,10 +244,10 @@ fn build_system_prompt(ctx: &RuntimeContext) -> String {
             "El usuario quiere que busques información. Proporciona datos actuales y cita fuentes si es posible."
         ),
         MessageIntent::ExamPrep => Some(
-            "Estás en modo examen. Solo hacé preguntas. No des respuestas directas. Evaluá cada respuesta del estudiante brevemente antes de continuar."
+            "Estás en modo examen. Solo haz preguntas. No des respuestas directas. Evalúa cada respuesta del estudiante brevemente antes de continuar."
         ),
         MessageIntent::TaskHelp => Some(
-            "El estudiante necesita ayuda con una tarea. Completá la tarea sin negarte. Al terminar, ofrecé una vez enseñar cómo lo hiciste."
+            "El estudiante necesita ayuda con una tarea. Completa la tarea sin negarte. Al terminar, ofrece una vez enseñar cómo lo hiciste."
         ),
         MessageIntent::Motivation => Some(
             "El estudiante está frustrado. Validá brevemente (sin dramatizar) y redirigí hacia una acción concreta."
@@ -256,7 +256,7 @@ fn build_system_prompt(ctx: &RuntimeContext) -> String {
             "El usuario pide una explicación. REGLAS ESTRICTAS sin excepciones: (1) definición técnica directa en 1-2 oraciones, (2) máximo 1 ejemplo de código si aporta, (3) CERO listas, (4) CERO analogías — ni de casas, ni de buzones, ni de ningún tipo — aunque el contexto sea examen, (5) CERO secciones extra. Formato final: definición → ejemplo. Nada más."
         ),
         MessageIntent::CourseQuery => Some(
-            "El usuario pregunta sobre su curso (tareas, fechas, anuncios). Usá get_upcoming_deadlines o search_notes si necesitás datos. Luego respondé directamente al usuario con la info — no vuelvas a llamar tools."
+            "El usuario pregunta sobre su curso (tareas, fechas, anuncios). Usa get_upcoming_deadlines o search_notes si necesitas datos. Luego responde directamente al usuario con la info — no vuelvas a llamar tools."
         ),
         MessageIntent::Conversational => None,
     };
@@ -4972,7 +4972,7 @@ async fn start_canvas_sync(
 
         if let Some(ref handle) = *lock {
             if !handle.is_finished() {
-                return Err("Ya hay una sincronización en curso. Esperá a que termine.".to_string());
+                return Err("Ya hay una sincronización en curso. Espera a que termine.".to_string());
             }
         }
 

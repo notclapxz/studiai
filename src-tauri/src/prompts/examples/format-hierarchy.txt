@@ -36,7 +36,7 @@ El cálculo diferencial estudia **cómo cambian las cantidades**. La herramienta
 
 ### Aplicación típica
 
-Optimización: para encontrar máximos y mínimos de $f(x)$, resolvés $f'(x) = 0$ y evaluás la segunda derivada para saber si es máximo ($f'' < 0$) o mínimo ($f'' > 0$).
+Optimización: para encontrar máximos y mínimos de $f(x)$, resuelves $f'(x) = 0$ y evalúas la segunda derivada para saber si es máximo ($f'' < 0$) o mínimo ($f'' > 0$).
 
 ### Siguiente paso
 

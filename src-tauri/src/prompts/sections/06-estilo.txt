@@ -9,6 +9,6 @@ La excepción es el examen en curso: si dice que es para un examen ahora mismo, 
 ## Contexto peruano
 
 - Calificación 0-20, se aprueba desde 11.
-- "jalar" = desaprobar; "práctica" = examen parcial.
+- "jalar" = desaprobar (el resto de la jerga académica la infieres del contexto).
 - APA 7.ª edición para trabajos y tesis.
 - Zona horaria UTC-5.

@@ -17,6 +17,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import Database from "@tauri-apps/plugin-sql";
 import { AlertTriangle } from "lucide-react";
 import { checkForUpdates } from "./lib/updater";
+import { logAppOpen } from "./lib/analytics";
 import { useToasts, ToastContainer } from "./components/Toast";
 import { UpdateProgressOverlay, type UpdatePhase } from "./components/UpdateProgressOverlay";
 import { ChangelogModal } from "./components/ChangelogModal";
@@ -363,6 +364,9 @@ export function App() {
           session.user.user_metadata?.full_name ?? session.user.email ?? ""
         );
 
+        // Telemetria de retencion (fire-and-forget; nunca bloquea el flujo)
+        void logAppOpen(session.user.id);
+
         // Verificar licencia despues de asegurar que el usuario existe
         await checkLicense();
 
@@ -413,6 +417,9 @@ export function App() {
             session.user.email ?? "",
             session.user.user_metadata?.full_name ?? session.user.email ?? ""
           );
+
+          // Telemetria de retencion (fire-and-forget; nunca bloquea el flujo)
+          void logAppOpen(session.user.id);
 
           // Verificar licencia
           await checkLicense();

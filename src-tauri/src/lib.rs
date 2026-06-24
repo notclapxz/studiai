@@ -45,35 +45,9 @@ const EXAMPLE_PDF_GENERATION: &str = include_str!("prompts/examples/pdf-generati
 const EXAMPLE_TOOL_USE: &str = include_str!("prompts/examples/tool-use.txt");
 const EXAMPLE_FORMAT_HIERARCHY: &str = include_str!("prompts/examples/format-hierarchy.txt");
 
-// ─── Runtime context y detección de intent ──────────────────────────────────
-// Se computa una vez por request en send_chat_message() y se pasa tanto al
-// builder del system prompt (para inyectar la fecha/OS/curso activo) como al
-// builder del toolConfig de Gemini (para promover `mode: "ANY"` cuando el
-// mensaje del usuario implica obviamente un tool específico).
-
-/// Intents detectados por keyword matching en el mensaje del usuario.
-/// Orden de evaluación: WebSearch → ConceptLearn → ExamPrep → TaskHelp → CourseQuery → Motivation → Conversational
-///
-/// ConceptLearn va ANTES que ExamPrep para que "explícame X tengo examen" → explicación, no modo examen.
-/// CourseQuery captura preguntas sobre tareas/fechas/anuncios para que el modelo sepa responder tras el tool call.
-/// Spec: sdd/prompts-coach/spec — Domain 3
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum MessageIntent {
-    /// Fallback — sin keywords reconocidos
-    Conversational,
-    /// Búsqueda web: "busca en internet", "googlea", etc.
-    WebSearch,
-    /// Tarea académica: "hazme", "resolvé", "completá", etc.
-    TaskHelp,
-    /// Preparación para examen: "modo examen", "quiz", etc.
-    ExamPrep,
-    /// Aprendizaje de conceptos: "explicame", "qué es", etc.
-    ConceptLearn,
-    /// Motivación / bloqueo emocional: "no puedo", "me rindo", etc.
-    Motivation,
-    /// Consulta sobre el curso: tareas, fechas, anuncios, notas.
-    CourseQuery,
-}
+// ─── Runtime context ─────────────────────────────────────────────────────────
+// Se computa una vez por request en send_chat_message() y alimenta el builder
+// del system prompt (fecha/OS/curso activo).
 
 #[derive(Debug, Clone)]
 struct RuntimeContext {
@@ -86,105 +60,12 @@ struct RuntimeContext {
     #[allow(dead_code)]
     active_course_name: Option<String>,
     course_context: Option<String>,
-    user_message_intent: MessageIntent,
 }
 
-/// Detecta el intent del mensaje del usuario por keyword matching en español.
-///
-/// Orden de evaluación (spec sdd/prompts-coach/spec — Domain 3):
-///   WebSearch → ExamPrep → TaskHelp → Motivation → ConceptLearn → Conversational
-///
-/// La normalización a lowercase ocurre primero para que variantes como
-/// "MODO EXAMEN" o "Hazme" sean reconocidas correctamente.
-///
-/// El resultado se usa para dos fines:
-///   1. `build_tool_config()` — promover mode="ANY" para WebSearch
-///   2. `build_system_prompt()` — inyectar mini-prompt pedagógico por intent
-fn detect_intent(user_message: &str) -> MessageIntent {
-    let msg = user_message.to_lowercase();
-
-    // 1. WebSearch — búsqueda explícita en internet
-    const WEB_KEYWORDS: &[&str] = &[
-        "busca en internet", "busca en la web", "search online",
-        "googlea", "investiga en internet", "busca", "buscar",
-        "noticias", "última información", "search",
-    ];
-    if WEB_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
-        return MessageIntent::WebSearch;
-    }
-
-    // 2. ConceptLearn — ANTES que ExamPrep para que "explícame X tengo examen"
-    //    → explicación, no modo examen. La intención de explicar gana siempre.
-    const CONCEPT_KEYWORDS: &[&str] = &[
-        "explícame", "explicame", "explicá", "explica",
-        "qué es", "que es", "cómo funciona", "como funciona",
-        "define", "qué significa", "que significa",
-        "entender", "aprendo", "para qué sirve", "para que sirve",
-    ];
-    if CONCEPT_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
-        return MessageIntent::ConceptLearn;
-    }
-
-    // 3. ExamPrep — solo si el usuario explícitamente pide prepararse/evaluarse
-    //    Nota: "tengo examen" solo NO activa esto — si hay "explícame" gana ConceptLearn.
-    const EXAM_KEYWORDS: &[&str] = &[
-        "modo examen", "examen mode", "prepárame para el examen",
-        "prepárame para examen", "quiero repasar", "practicar para",
-        "preparar examen", "quiz", "pruébame", "repaso de",
-        "hazme preguntas", "evalúame", "evalúa",
-    ];
-    if EXAM_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
-        return MessageIntent::ExamPrep;
-    }
-
-    // 4. TaskHelp — el estudiante pide que se complete una tarea
-    const TASK_KEYWORDS: &[&str] = &[
-        "hazme", "haceme", "hacé", "haz ", "haz\t",
-        "escríbeme", "escribime", "resolvé", "resuelve", "resolver",
-        "completá", "completa", "dame ", "dame\t",
-        "necesito que", "necesito que hagas", "ayúdame con",
-        "tengo que entregar", "no entiendo el enunciado",
-    ];
-    if TASK_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
-        return MessageIntent::TaskHelp;
-    }
-
-    // 5. CourseQuery — preguntas sobre tareas, fechas, anuncios, notas del curso.
-    //    Garantiza que el modelo tenga instrucción de responder tras el tool call.
-    const COURSE_KEYWORDS: &[&str] = &[
-        "tarea", "tareas", "práctica", "practica", "prácticas",
-        "entrega", "entregar", "deadline", "vence", "vencimiento",
-        "anuncio", "anuncios", "nota", "notas", "calificación", "calificacion",
-        "evaluación", "evaluacion", "examen hoy", "examen mañana",
-        "qué tengo", "que tengo", "tengo hoy", "tengo mañana",
-        "cronograma", "horario", "semana", "hoy hay",
-    ];
-    if COURSE_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
-        return MessageIntent::CourseQuery;
-    }
-
-    // 6. Motivation — bloqueo emocional o frustración
-    const MOTIVATION_KEYWORDS: &[&str] = &[
-        "motivación", "motivacion", "no puedo", "me rindo",
-        "estoy agotado", "ayúdame a motivarme", "no entiendo nada",
-        "me voy a jalar", "estoy perdido", "estoy mal",
-    ];
-    if MOTIVATION_KEYWORDS.iter().any(|kw| msg.contains(kw)) {
-        return MessageIntent::Motivation;
-    }
-
-    // 7. Conversational — fallback
-    MessageIntent::Conversational
-}
-
-/// Ensambla el system prompt final a partir de las 7 secciones + ejemplos
-/// few-shot + contexto runtime (fecha, OS, curso activo) + mini-prompt por intent.
-///
-/// El intent ya viene resuelto en `ctx.user_message_intent` (calculado en
-/// `send_chat_message()` antes de construir el prompt). Inyectamos un bloque
-/// breve (max 3 líneas) según el tipo de consulta detectado. No se agrega
-/// bloque extra para `Conversational` para evitar overhead innecesario.
-/// Spec: sdd/prompts-coach/spec — Domain 4
+/// Ensambla el system prompt final: las 7 secciones + ejemplos few-shot +
+/// contexto runtime (fecha, OS, curso activo). Un solo prompt adaptativo; el
+/// modelo decide el comportamiento y el uso de tools (AUTO mode), sin inyectar
+/// mini-prompts por intent.
 fn build_system_prompt(ctx: &RuntimeContext) -> String {
     let mut out = String::with_capacity(16 * 1024);
 
@@ -237,87 +118,7 @@ fn build_system_prompt(ctx: &RuntimeContext) -> String {
     out.push_str("- Si el usuario pregunta 'cuándo es el examen' o 'qué entra en la práctica', consulta PRIMERO el sílabo inyectado\n");
     out.push_str("- Si NO hay sílabo, NO inventes fechas ni cronogramas — usa search_notes\n");
 
-    // 4. Mini-prompt pedagógico según intent detectado en este turno
-    // Conversational no agrega bloque extra — sin overhead innecesario
-    let mini_prompt = match ctx.user_message_intent {
-        MessageIntent::WebSearch => Some(
-            "El usuario quiere que busques información. Proporciona datos actuales y cita fuentes si es posible."
-        ),
-        MessageIntent::ExamPrep => Some(
-            "Estás en modo examen. Solo haz preguntas. No des respuestas directas. Evalúa cada respuesta del estudiante brevemente antes de continuar."
-        ),
-        MessageIntent::TaskHelp => Some(
-            "El estudiante necesita ayuda con una tarea. Completa la tarea sin negarte. Al terminar, ofrece una vez enseñar cómo lo hiciste."
-        ),
-        MessageIntent::Motivation => Some(
-            "El estudiante está frustrado. Validá brevemente (sin dramatizar) y redirigí hacia una acción concreta."
-        ),
-        MessageIntent::ConceptLearn => Some(
-            "El estudiante pide una explicación. Empieza por la definición directa en 1-2 oraciones y un ejemplo, de código si aplica. Mantente conciso. Agrega estructura solo si el tema tiene partes claras que navegar, y una analogía solo si no engancha con lo anterior o la pide."
-        ),
-        MessageIntent::CourseQuery => Some(
-            "El usuario pregunta sobre su curso (tareas, fechas, anuncios). Usa get_upcoming_deadlines o search_notes si necesitas datos. Luego responde directamente al usuario con la info — no vuelvas a llamar tools."
-        ),
-        MessageIntent::Conversational => None,
-    };
-
-    if let Some(block) = mini_prompt {
-        out.push_str("\n\n---\n\n# CONTEXTO DE ESTA CONSULTA\n\n");
-        out.push_str(block);
-        out.push('\n');
-    }
-
     out
-}
-
-// ─── Gemini toolConfig (forced function calling) ────────────────────────────
-// Mapea la shape REST de Gemini: `toolConfig.functionCallingConfig.mode`.
-// Ver: https://ai.google.dev/gemini-api/docs/function-calling#function_calling_mode
-//
-// mode:
-//   "AUTO" — modelo decide (default, omitimos el campo entonces)
-//   "ANY"  — OBLIGA al modelo a llamar alguna función (la lista la podemos restringir)
-//   "NONE" — prohíbe tools
-//
-// Usamos "ANY" + allowed_function_names para turnos donde el user message
-// implica un tool específico (ej. web_search).
-
-#[derive(Debug, Clone, serde::Serialize)]
-struct ToolConfig {
-    #[serde(rename = "functionCallingConfig")]
-    function_calling_config: FunctionCallingConfig,
-}
-
-#[derive(Debug, Clone, serde::Serialize)]
-struct FunctionCallingConfig {
-    mode: String,
-    #[serde(
-        rename = "allowedFunctionNames",
-        skip_serializing_if = "Option::is_none"
-    )]
-    allowed_function_names: Option<Vec<String>>,
-}
-
-/// Construye el `toolConfig` para Gemini según el intent detectado.
-/// Retorna `None` cuando el modo es AUTO (el campo se omite entonces del body
-/// del request, preservando la semántica default de Gemini).
-/// Solo WebSearch promueve ANY mode — el resto usa AUTO para máxima flexibilidad.
-fn build_tool_config(intent: MessageIntent) -> Option<ToolConfig> {
-    match intent {
-        MessageIntent::WebSearch => Some(ToolConfig {
-            function_calling_config: FunctionCallingConfig {
-                mode: "ANY".to_string(),
-                allowed_function_names: Some(vec!["web_search".to_string()]),
-            },
-        }),
-        // Todos los demás intents usan AUTO mode (None = campo omitido en request)
-        MessageIntent::Conversational
-        | MessageIntent::TaskHelp
-        | MessageIntent::ExamPrep
-        | MessageIntent::ConceptLearn
-        | MessageIntent::CourseQuery
-        | MessageIntent::Motivation => None,
-    }
 }
 
 /// Handle de la tarea de sync activa.
@@ -3836,7 +3637,6 @@ async fn call_gemini_streaming(
     window: &tauri::Window,
     contents: &[serde_json::Value],
     system_text: &str,
-    tool_config: Option<&ToolConfig>,
 ) -> Result<GeminiStreamResult, String> {
     use futures_util::StreamExt;
 
@@ -3884,7 +3684,7 @@ async fn call_gemini_streaming(
 
     let generation_config = generation_config_value;
 
-    let mut body = serde_json::json!({
+    let body = serde_json::json!({
         "system_instruction": {
             "parts": [{"text": system_text}]
         },
@@ -3892,13 +3692,6 @@ async fn call_gemini_streaming(
         "tools": build_tools(),
         "generationConfig": generation_config
     });
-
-    // toolConfig solo va en el body cuando promovemos a ANY.
-    // Cuando es None (AUTO), Gemini aplica su default sin el campo.
-    if let Some(tc) = tool_config {
-        body["toolConfig"] = serde_json::to_value(tc)
-            .map_err(|e| format!("Error serializando toolConfig: {e}"))?;
-    }
 
     let url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse";
 
@@ -4153,7 +3946,6 @@ async fn agentic_loop(
     mut contents: Vec<serde_json::Value>,
     system_text: &str,
     active_course_id: Option<i64>,
-    initial_tool_config: Option<ToolConfig>,
 ) -> Result<(), String> {
     // Guard RAII: garantiza que `chat-stream-done` se emita en TODOS los paths
     // de salida (return temprano, ?, error propagado, panic, fall-through).
@@ -4172,15 +3964,8 @@ async fn agentic_loop(
         compact_context(window, &mut contents, system_text, &mut compact_failures).await.ok();
 
         // ── 1. Llamar Gemini con streaming ──────────────────────────────────
-        // toolConfig con mode="ANY" SOLO aplica en el primer step. Después del
-        // primer tool call, Gemini debe estar libre para responder texto
-        // (si no, el loop se quedaría forzando tool calls indefinidamente).
-        let active_tool_config = if step == 0 { initial_tool_config.as_ref() } else { None };
-        eprintln!("[agentic] step={step} — llamando Gemini (contents: {} turns, forced_tool={})",
-            contents.len(),
-            active_tool_config.is_some()
-        );
-        let result = match call_gemini_streaming(window, &contents, system_text, active_tool_config).await {
+        eprintln!("[agentic] step={step} — llamando Gemini ({} turns)", contents.len());
+        let result = match call_gemini_streaming(window, &contents, system_text).await {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("[agentic] step={step} — error en call_gemini_streaming: {e}");
@@ -4204,8 +3989,8 @@ async fn agentic_loop(
                     "role": "user",
                     "parts": [{"text": "Continúa"}]
                 }));
-                // Reintentar una vez (sin forced tool_config — ya estamos en retry)
-                match call_gemini_streaming(window, &contents, system_text, None).await {
+                // Reintentar una vez
+                match call_gemini_streaming(window, &contents, system_text).await {
                     Ok(retry_result) => {
                         if !retry_result.model_parts.is_empty() {
                             contents.push(serde_json::json!({
@@ -4887,14 +4672,12 @@ async fn send_chat_message(
         days_es[weekday], day, month, year, hour, minute
     );
 
-    // Detectar intent del último mensaje del usuario (para forzar tool calls)
     let last_user_text = messages
         .iter()
         .rev()
         .find(|m| m.role == "user")
         .map(|m| m.content.as_str())
         .unwrap_or("");
-    let intent = detect_intent(last_user_text);
 
     let home_dir = std::env::var("HOME").unwrap_or_else(|_| "/Users".to_string());
     let downloads_dir = format!("{}/Downloads", home_dir);
@@ -4907,10 +4690,8 @@ async fn send_chat_message(
         active_course_id,
         active_course_name: None,
         course_context: course_context.clone(),
-        user_message_intent: intent,
     };
     let system_text = build_system_prompt(&runtime_ctx);
-    let tool_config = build_tool_config(runtime_ctx.user_message_intent);
 
     // ── 1b. Validar imagenes si existen ────────────────────────────────────────
     for img in &images {
@@ -4956,7 +4737,7 @@ async fn send_chat_message(
     // ── 4. Ejecutar el loop agéntico ──────────────────────────────────────────
     eprintln!("[chat] Starting agentic loop with {} turns, system_text: {} chars", contents.len(), system_text.len());
 
-    match agentic_loop(&window, &app, contents, &system_text, active_course_id, tool_config).await {
+    match agentic_loop(&window, &app, contents, &system_text, active_course_id).await {
         Ok(()) => {
             eprintln!("[chat] Agentic loop completed successfully");
         }

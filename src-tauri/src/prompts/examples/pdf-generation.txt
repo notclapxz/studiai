@@ -1,54 +1,26 @@
-# EJEMPLO — Generación de PDF con research previo (create_pdf)
+# EJEMPLO — create_pdf con research previo
 
-USUARIO: "Hazme un PDF con un resumen de mis notas del curso de mate, incluyendo las tareas pendientes"
+USUARIO: "Hazme un PDF con un resumen de mis notas de mate y las tareas pendientes"
 
-## CORRECTO — research PRIMERO, después create_pdf
-
-[paso 1: research]
+CORRECTO — research PRIMERO, después create_pdf:
 
     search_notes({ query: "matemática conceptos clave", course_id: 123 })
-    list_documents({ course_id: 123 })
     read_document({ id: 456 })
     get_upcoming_deadlines({ course_id: 123 })
-
-[paso 2: con la info real, generar el PDF]
 
     create_pdf({
       doc_type: "informe",
       title: "Resumen de Matemática",
       course: "Matemática",
-      author: "Estudiante",
-      body: "= Conceptos clave\n\n- *Derivadas*: tasa de cambio instantánea, $f'(x) = lim_(h->0) (f(x+h)-f(x))/h$\n- *Integrales*: área bajo la curva\n\n= Tareas pendientes\n\n- *Tarea 1* — vence 12/04"
+      body: "= Conceptos clave\n\n- *Derivadas*: $f'(x) = lim_(h->0) (f(x+h)-f(x))/h$\n\n= Tareas pendientes\n\n- *Tarea 1* — vence 12/04"
     })
 
-[paso 3: confirmar al usuario en UNA oración]
+"Listo, generé el informe de Matemática con tus conceptos y tareas."
 
-"Listo, generé el informe de Matemática con tus conceptos clave y las tareas pendientes."
+INCORRECTO — generar antes del research: el `body` queda con info genérica inventada en vez de tus notas reales. Research siempre primero.
 
-## INCORRECTO #1 — generar el PDF antes del research
+INCORRECTO — meter overrides en el `body`:
 
-    create_pdf({ doc_type: "informe", title: "Matemática", body: "= Conceptos\n\nAlgunos conceptos generales..." })
+    body: "#set page(width: 10cm)\n= Resumen"
 
-MAL. El body quedó con info GENÉRICA inventada, no con tus notas reales. SIEMPRE research primero.
-
-## INCORRECTO #2 — narrar el markup en el chat
-
-"Voy a crear el PDF. Contenido:
-
-    = Resumen
-    - Concepto 1..."
-
-MAL. NUNCA pegues el markup en el chat. Va como argumento `body` de `create_pdf`.
-
-## INCORRECTO #3 — overrides de geometría en el body
-
-    create_pdf({ doc_type: "informe", title: "X", body: "#set page(width: 10cm)\n#set text(font: \"Arial\")\n= Resumen" })
-
-MAL. `#set page`/`#set text`/`#pagebreak` están PROHIBIDOS en `body` — la plantilla controla geometría y tema. Rompen el layout.
-
-## INCORRECTO #4 — usar HTML o weasyprint
-
-    create_file({ path: "~/Downloads/x.html", content: "<!DOCTYPE html>..." })
-    run_bash({ command: "weasyprint x.html x.pdf" })
-
-MAL. Eso ya no existe. Para PDFs usa SIEMPRE `create_pdf` (motor Typst nativo, sin HTML ni dependencias externas).
+`#set page`/`#set text`/`#pagebreak` rompen el layout: la plantilla controla geometría y tema.

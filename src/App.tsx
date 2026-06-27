@@ -356,6 +356,10 @@ export function App() {
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("[Auth] Evento de auth:", event);
 
+      // Empuja el JWT al backend Rust para autenticar el proxy de Gemini.
+      // Cubre SIGNED_IN / TOKEN_REFRESHED (token fresco) y SIGNED_OUT (null).
+      void invoke("set_auth_token", { token: session?.access_token ?? null });
+
       if (event === "SIGNED_IN" && session?.user) {
         setUser(session.user);
         await ensureUserExists(
@@ -411,6 +415,8 @@ export function App() {
         }
 
         if (session?.user) {
+          // Empuja el JWT al backend (proxy de Gemini) al arrancar con sesión activa.
+          void invoke("set_auth_token", { token: session.access_token });
           setUser(session.user);
           await ensureUserExists(
             session.user.id,

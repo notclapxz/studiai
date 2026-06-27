@@ -389,19 +389,24 @@ export function useChat({
         let errorType: ErrorType;
         let errorMsg: string;
 
-        if (raw.includes("network") || raw.includes("dns") || raw.includes("connect") ||
+        if (raw.includes("not_entitled")) {
+          // El proxy rechazó por licencia inactiva (trial/pro vencido).
+          errorType = "token_expirado";
+          errorMsg = "Tu plan expiró. Renueva tu suscripción para seguir usando el chat con IA.";
+        } else if (raw.includes("network") || raw.includes("dns") || raw.includes("connect") ||
             raw.includes("offline") || raw.includes("failed to connect") || raw.includes("no internet") ||
             raw.includes("error al conectar")) {
           errorType = "sin_internet";
           errorMsg = "Sin conexion a internet. Verifica tu red e intenta de nuevo.";
         } else if (raw.includes("429") || raw.includes("rate limit") || raw.includes("too many") ||
-                   raw.includes("resource_exhausted") || raw.includes("quota")) {
+                   raw.includes("resource_exhausted") || raw.includes("quota") || raw.includes("rate_limited")) {
           errorType = "rate_limit";
           errorMsg = "Demasiadas solicitudes. Espera un momento e intenta de nuevo.";
-        } else if (raw.includes("401") || raw.includes("403") || raw.includes("token") ||
-                   raw.includes("auth") || raw.includes("unauthorized") || raw.includes("forbidden")) {
+        } else if (raw.includes("401") || raw.includes("invalid_token") || raw.includes("missing_token") ||
+                   raw.includes("unauthorized") || raw.includes("sesión no disponible") || raw.includes("sesion no disponible")) {
+          // 401 del proxy de Gemini = sesión de Supabase expirada/ausente (NO Canvas).
           errorType = "token_expirado";
-          errorMsg = "Tu token de Canvas ha expirado. Actualízalo en Ajustes > Canvas.";
+          errorMsg = "Tu sesión expiró. Cierra sesión y vuelve a entrar.";
         } else {
           errorType = "generico";
           errorMsg = "Hubo un error al procesar tu mensaje. Intenta de nuevo.";

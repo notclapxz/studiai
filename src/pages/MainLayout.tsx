@@ -12,6 +12,7 @@ import { Sidebar } from "../components/Sidebar";
 import { ChatPanel } from "../components/ChatPanel";
 import { TasksPanel } from "../components/TasksPanel";
 import { SettingsModal } from "../components/SettingsModal";
+import { DocumentModal } from "../components/DocumentModal";
 import { PomodoroWidget } from "../components/PomodoroWidget";
 import { ToastContainer, useToasts } from "../components/Toast";
 import { StoragePreferenceModal } from "../components/StoragePreferenceModal";
@@ -133,6 +134,9 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
 
   /** Sección inicial del modal de settings (para abrir directamente en "planes", etc.) */
   const [settingsSection, setSettingsSection] = useState<"cuenta" | "planes" | "canvas" | "productividad" | "acerca" | undefined>(undefined);
+
+  /** true cuando el modal "Crear documento" está abierto */
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
 
   /** true cuando el widget de Pomodoro está visible */
   const [showPomodoro, setShowPomodoro] = useState(false);
@@ -613,8 +617,18 @@ export function MainLayout({ onOpenChangelog, onForceOnboarding }: MainLayoutPro
             setSettingsSection("planes");
             setShowSettings(true);
           }}
+          onCrearDocumento={() => setShowDocumentModal(true)}
         />
       )}
+
+      {/* ── Modal "Crear documento" ───────────────────────────── */}
+      <DocumentModal
+        isOpen={showDocumentModal}
+        onClose={() => setShowDocumentModal(false)}
+        sessionId={currentSessionIdRef.current}
+        defaultCourse={cursoSeleccionado?.nombre ?? ""}
+        onGenerate={(instruction) => handleEnviarMensaje(instruction)}
+      />
 
       {/* ── 5. Settings Modal overlay ─────────────────────────── */}
       <SettingsModal

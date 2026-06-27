@@ -52,6 +52,8 @@ interface ChatPanelProps {
   onConectarCanvas?: () => void;
   /** Callback para abrir la sección de Planes en Settings */
   onVerPlanes?: () => void;
+  /** Abre el modal "Crear documento" desde el ChatInput. */
+  onCrearDocumento?: () => void;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -617,6 +619,7 @@ export function ChatPanel({
   onEnviarMensaje,
   onConectarCanvas,
   onVerPlanes,
+  onCrearDocumento,
 }: ChatPanelProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
   const { licenseStatus } = useAuthStore();
@@ -696,6 +699,7 @@ export function ChatPanel({
               placeholder="Escribe un mensaje..."
               externalImage={droppedImage}
               onExternalImageClear={() => setDroppedImage(null)}
+              onCrearDocumento={onCrearDocumento}
             />
           )}
         </>
@@ -710,6 +714,7 @@ export function ChatPanel({
               placeholder="Escribe un mensaje..."
               externalImage={droppedImage}
               onExternalImageClear={() => setDroppedImage(null)}
+              onCrearDocumento={onCrearDocumento}
             />
           )}
         </>
@@ -740,6 +745,7 @@ export function ChatPanel({
               }
               externalImage={droppedImage}
               onExternalImageClear={() => setDroppedImage(null)}
+              onCrearDocumento={onCrearDocumento}
             />
           )}
         </>

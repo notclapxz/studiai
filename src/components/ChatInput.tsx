@@ -2,7 +2,7 @@
 // Textarea auto-expandible + botón enviar + imagen paste/drop
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Paperclip, Send, X, Image as ImageIcon } from "lucide-react";
+import { Paperclip, Send, X, Image as ImageIcon, FileText } from "lucide-react";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +23,8 @@ interface ChatInputProps {
   externalImage?: PendingImage | null;
   /** Callback para limpiar imagen externa después de procesarla */
   onExternalImageClear?: () => void;
+  /** Abre el modal "Crear documento". Si se omite, el botón no se renderiza. */
+  onCrearDocumento?: () => void;
 }
 
 // ─── Componente ──────────────────────────────────────────────────────────────
@@ -33,6 +35,7 @@ export function ChatInput({
   placeholder = "Escribe un mensaje...",
   externalImage,
   onExternalImageClear,
+  onCrearDocumento,
 }: ChatInputProps) {
   const [mensaje, setMensaje] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
@@ -289,6 +292,27 @@ export function ChatInput({
         >
           <Paperclip size={16} strokeWidth={1.5} />
         </button>
+
+        {/* Botón crear documento (abre DocumentModal) */}
+        {onCrearDocumento && (
+          <button
+            type="button"
+            onClick={onCrearDocumento}
+            className="w-7 h-7 shrink-0 rounded flex items-center justify-center transition-colors duration-100 outline-none mb-0.5"
+            style={{ color: "var(--text-weak)" }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.color = "var(--text-base)";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.color = "var(--text-weak)";
+            }}
+            title="Crear documento"
+            aria-label="Crear documento"
+            disabled={deshabilitado}
+          >
+            <FileText size={16} strokeWidth={1.5} />
+          </button>
+        )}
 
         {/* Input oculto para selección de archivos */}
         <input

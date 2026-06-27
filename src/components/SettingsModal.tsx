@@ -14,6 +14,8 @@ import {
   Info,
   CreditCard,
   Timer,
+  Brain,
+  FileText,
 } from "lucide-react";
 import type { SyncProgress, SyncEventPayload } from "./SyncProgress";
 import { useAuthStore } from "../store/authStore";
@@ -21,6 +23,8 @@ import { CuentaSection } from "./settings/CuentaSection";
 import { PlanesSection } from "./settings/PlanesSection";
 import { CanvasSection } from "./settings/CanvasSection";
 import { ProductividadSection } from "./settings/ProductividadSection";
+import { DocumentosSection } from "./settings/DocumentosSection";
+import { MemoriaSection } from "./settings/MemoriaSection";
 import { AcercaSection } from "./settings/AcercaSection";
 
 // ─── Tipos internos ──────────────────────────────────────────────────────────
@@ -71,7 +75,7 @@ interface CanvasUserInfo {
 
 type VerificationStatus = "idle" | "loading" | "success" | "error";
 
-type SettingsSection = "cuenta" | "planes" | "canvas" | "productividad" | "acerca";
+type SettingsSection = "cuenta" | "planes" | "canvas" | "productividad" | "documentos" | "memoria" | "acerca";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -606,6 +610,8 @@ export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, 
     { key: "planes", label: "Planes", icon: <CreditCard size={16} strokeWidth={1.5} /> },
     { key: "canvas", label: "Canvas", icon: <BookOpen size={16} strokeWidth={1.5} /> },
     { key: "productividad", label: "Productividad", icon: <Timer size={16} strokeWidth={1.5} /> },
+    { key: "documentos", label: "Documentos", icon: <FileText size={16} strokeWidth={1.5} /> },
+    { key: "memoria", label: "Memoria", icon: <Brain size={16} strokeWidth={1.5} /> },
     { key: "acerca", label: "Acerca de", icon: <Info size={16} strokeWidth={1.5} /> },
   ];
 
@@ -783,6 +789,10 @@ export function SettingsModal({ open, onClose, initialSection, onOpenChangelog, 
                 onSaveOkChange={setProductivitySaveOk}
               />
             )}
+
+            {activeSection === "documentos" && <DocumentosSection />}
+
+            {activeSection === "memoria" && <MemoriaSection />}
 
             {activeSection === "acerca" && (
               <AcercaSection

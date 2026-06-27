@@ -525,5 +525,121 @@ pub fn get_migrations() -> Vec<Migration> {
             ",
             kind: MigrationKind::Up,
         },
+        // Migración 16 — Memoria local del estudiante (perfil + preferencias)
+        //
+        // Recrea la tabla `student_memory` (de migración 1) que estaba sin uso:
+        // su esquema viejo (memory_type, content, updated_at) nunca se leyó ni
+        // escribió en ningún lado del código, así que el DROP+CREATE no pierde
+        // datos. El esquema nuevo soporta el tool `remember` + recall automático.
+        //
+        // Diseño (un solo canal `always`, sin embeddings ni FTS5 — ver debate):
+        //   - kind: 'profile' (contexto académico) | 'preference' (cómo quiere la
+        //     interacción). CHECK constraint para que el modelo no rompa el ruteo.
+        //   - mem_key: slug estable opcional → UPSERT/corrección de un dato sin
+        //     duplicar. Índice UNIQUE parcial (solo filas vivas).
+        //   - deleted_at: soft-delete (la UI de transparencia borra suave; el wipe
+        //     por cambio de usuario en lib.rs hace hard DELETE).
+        //
+        // FTS5 se cortó del MVP: el volumen por estudiante es de decenas de items,
+        // se inyectan TODOS (cap 8) al prompt. Por eso esta migración es DDL
+        // estándar puro (tauri-plugin-sql NO soporta DDL de FTS5).
+        Migration {
+            version: 16,
+            description: "student_memory_profile_preferences",
+            sql: "
+                DROP TABLE IF EXISTS student_memory;
+                CREATE TABLE student_memory (
+                  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                  kind        TEXT NOT NULL CHECK (kind IN ('profile','preference')),
+                  mem_key     TEXT,
+                  content     TEXT NOT NULL,
+                  course_id   INTEGER,
+                  pinned      INTEGER NOT NULL DEFAULT 0,
+                  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+                  deleted_at  TEXT
+                );
+
+                -- UNIQUE parcial: garantiza un único registro VIVO por mem_key,
+                -- permitiendo que queden filas borradas con el mismo key.
+                CREATE UNIQUE INDEX idx_sm_memkey
+                  ON student_memory(mem_key)
+                  WHERE mem_key IS NOT NULL AND deleted_at IS NULL;
+
+                -- Cubre el SELECT de recall (filtra vivas, ordena por pinned + recencia).
+                CREATE INDEX idx_sm_active
+                  ON student_memory(deleted_at, pinned, updated_at);
+            ",
+            kind: MigrationKind::Up,
+        },
+        // Migración 17 — Estilo de documento configurable (tabla single-row id=1)
+        //
+        // Persiste los DEFAULTS de estilo que `create_pdf` lee en runtime (mismo
+        // patrón que `detect_university`). Un único row con CHECK(id=1) garantiza
+        // que nunca haya más de una configuración base. Los DEFAULT de cada columna
+        // reproducen EXACTAMENTE el comportamiento hardcoded actual de los templates
+        // (apa/inter/12/1.5/2.5/portrait/none/light/blue/16:9/light), por lo que la
+        // migración es aditiva y no cambia ningún PDF hasta que el usuario edite algo.
+        //
+        // El `INSERT OR IGNORE ... VALUES (1)` se apoya en los DEFAULT de columna para
+        // materializar la fila de defaults: aunque `read_document_style` ya cae a
+        // defaults si la fila falta, tener la fila presente simplifica el UPSERT del
+        // comando `set_document_style` y hace el estado observable en la DB.
+        Migration {
+            version: 17,
+            description: "document_style_single_row",
+            sql: "
+                CREATE TABLE IF NOT EXISTS document_style (
+                  id                  INTEGER PRIMARY KEY CHECK (id = 1),
+                  format              TEXT NOT NULL DEFAULT 'apa',
+                  font_family         TEXT NOT NULL DEFAULT 'inter',
+                  font_size           INTEGER NOT NULL DEFAULT 12,
+                  line_height         REAL NOT NULL DEFAULT 1.5,
+                  margins_cm          REAL NOT NULL DEFAULT 2.5,
+                  orientation         TEXT NOT NULL DEFAULT 'portrait',
+                  logo                TEXT NOT NULL DEFAULT 'none',
+                  cover_theme         TEXT NOT NULL DEFAULT 'light',
+                  accent_color        TEXT NOT NULL DEFAULT 'blue',
+                  presentation_ratio  TEXT NOT NULL DEFAULT '16:9',
+                  presentation_theme  TEXT NOT NULL DEFAULT 'light'
+                );
+
+                INSERT OR IGNORE INTO document_style (id) VALUES (1);
+            ",
+            kind: MigrationKind::Up,
+        },
+        // Migración 18 — Override de estilo transitorio por sesión de chat
+        //
+        // El modal de creación opcional escribe aquí un override de estilo asociado a
+        // la `session_id` activa. `create_pdf` lo consume one-shot (merge + clear) en
+        // Fase 4. Scope per-chat-session (decisión aprobada): `session_id` es PRIMARY
+        // KEY → a lo sumo un override pendiente por sesión; un nuevo override sobre la
+        // misma sesión hace UPSERT. Todos los campos NOT NULL porque el modal
+        // pre-rellena con los defaults persistidos y envía un StyleConfig completo.
+        //
+        // No declaramos FK a chat_sessions(id) para no acoplar la limpieza por CASCADE:
+        // la fila es efímera y se borra explícitamente al consumirse en create_pdf.
+        Migration {
+            version: 18,
+            description: "pending_style_override_per_session",
+            sql: "
+                CREATE TABLE IF NOT EXISTS pending_style_override (
+                  session_id          INTEGER PRIMARY KEY,
+                  format              TEXT NOT NULL,
+                  font_family         TEXT NOT NULL,
+                  font_size           INTEGER NOT NULL,
+                  line_height         REAL NOT NULL,
+                  margins_cm          REAL NOT NULL,
+                  orientation         TEXT NOT NULL,
+                  logo                TEXT NOT NULL,
+                  cover_theme         TEXT NOT NULL,
+                  accent_color        TEXT NOT NULL,
+                  presentation_ratio  TEXT NOT NULL,
+                  presentation_theme  TEXT NOT NULL,
+                  created_at          TEXT NOT NULL DEFAULT (datetime('now'))
+                );
+            ",
+            kind: MigrationKind::Up,
+        },
     ]
 }

@@ -51,7 +51,9 @@ jobs:
       - name: Create .env
         shell: bash
         run: |
-          echo "GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}" >> .env
+          # GEMINI_API_KEY ya NO se embebe en el binario: las llamadas a Gemini
+          # van por el Cloudflare Worker (cloudflare/gemini-proxy/), que tiene la
+          # key como secret server-side. Por eso no se escribe aquí.
           echo "VITE_CULQI_PUBLIC_KEY=${{ secrets.VITE_CULQI_PUBLIC_KEY }}" >> .env
 
       - name: Sync version from tag to tauri.conf.json
@@ -60,6 +62,27 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           node -e "const fs=require('fs'),p='src-tauri/tauri.conf.json',c=JSON.parse(fs.readFileSync(p,'utf8'));c.version='${VERSION}';fs.writeFileSync(p,JSON.stringify(c,null,2));"
           echo "Version synced to ${VERSION}"
+
+      - name: Extract release notes from CHANGELOG
+        id: release_notes
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Saca el cuerpo de la sección "## vX.Y.Z" hasta el siguiente "## v" o EOF.
+          BODY=$(awk -v ver="## v${VERSION}" '
+            $0 == ver {found=1; next}
+            found && /^## v/ {exit}
+            found {print}
+          ' CHANGELOG.md)
+          if [ -z "$BODY" ]; then
+            echo "::warning::No hay sección para v${VERSION} en CHANGELOG.md; usando fallback"
+            BODY="StudiAI v${VERSION}"
+          fi
+          {
+            echo "body<<__CHANGELOG_EOF__"
+            echo "$BODY"
+            echo "__CHANGELOG_EOF__"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -71,34 +94,7 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: StudiAI ${{ github.ref_name }}
           releaseBody: |
-            ## ¿Qué hay de nuevo?
-
-            ### 🔄 Progreso de actualización visible
-            - Al instalar una actualización ya no desaparece la pantalla sin aviso
-            - Overlay con barra de progreso de descarga (con porcentaje real), fase de instalación y fase de reinicio
-            - La pantalla persiste hasta que la app se cierra — sabés exactamente qué está pasando
-
-            ### 🎨 Diseño renovado
-            - Sistema de tokens de color unificado — toda la app usa una paleta consistente
-            - Nueva fuente **Geist** para mejor legibilidad
-            - Notificaciones rediseñadas con animaciones nativas
-
-            ### 📁 Control sobre tus archivos
-            - Al sincronizar por primera vez podés elegir dónde guardar tus materiales:
-              **Solo base de datos** (recomendado) o **Carpeta local** con el path que vos elegís
-            - Podés cambiar esta preferencia en Configuración → Canvas
-
-            ### 🧹 Limpieza automática de duplicados
-            - Los archivos duplicados de Canvas (ej: "matemáticas (1).pdf") se eliminan al sincronizar
-            - También se limpian archivos obsoletos que ya no existen en Canvas
-
-            ### 👤 Cambio de cuenta Canvas
-            - Si conectás una cuenta diferente, los archivos del usuario anterior se limpian automáticamente
-            - Si solo renovás el token (misma cuenta), no se borra nada
-
-            ### 🐛 Fixes
-            - Corregido error "FOREIGN KEY constraint failed" al cambiar de cuenta Canvas
-            - Corregido orden de borrado de tablas en limpieza de usuario anterior
+            ${{ steps.release_notes.outputs.body }}
 
             ---
 
@@ -139,6 +135,14 @@ jobs:
           TAURI_VERSION=$(python3 -c "import json; print(json.load(open('src-tauri/tauri.conf.json'))['version'])")
           echo "Tag: ${TAG} | Version manifest: ${VERSION} | Tauri file version: ${TAURI_VERSION}"
 
+          # Notas del auto-updater: misma sección del CHANGELOG que el GitHub Release.
+          NOTES=$(awk -v ver="## ${TAG}" '
+            $0 == ver {found=1; next}
+            found && /^## v/ {exit}
+            found {print}
+          ' CHANGELOG.md)
+          [ -z "$NOTES" ] && NOTES="StudiAI ${TAG}"
+
           # Descargar .sig files del release (generados por tauri-action)
           mkdir -p /tmp/sigs
           gh release download ${TAG} --pattern "*.sig" --dir /tmp/sigs
@@ -165,9 +169,10 @@ jobs:
             --arg win_sig "$WIN_SIG" \
             --arg tag "$TAG" \
             --arg tv "$TAURI_VERSION" \
+            --arg notes "$NOTES" \
             '{
               version: $version,
-              notes: "v0.13.0 — Overlay de progreso al instalar actualizaciones, fix cambio de cuenta Canvas (FK constraint), fix orden de borrado de tablas.",
+              notes: $notes,
               pub_date: $pub_date,
               platforms: {
                 "darwin-aarch64": {

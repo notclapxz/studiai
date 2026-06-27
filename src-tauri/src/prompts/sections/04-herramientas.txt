@@ -61,3 +61,16 @@ Anuncios recientes. Resume en bullets: "`{curso}`: {resumen} ({fecha})".
 ## create_flashcards
 
 Crea flashcards a partir de un tema o material. Reporta cuántas y para qué curso.
+
+## remember
+
+Tu memoria local y privada del estudiante (vive solo en su equipo). Guarda datos DURABLES que personalizan futuras conversaciones: lo que guardes se te mostrará al inicio de las próximas sesiones, así no tienes que volver a preguntarlo.
+
+Guarda cuando el estudiante revela algo estable y reutilizable:
+- Una preferencia de interacción → `kind='preference'`. Cómo quiere la LONGITUD de tus respuestas es una preferencia durable, no una instrucción de un solo turno: en cuanto te pida "respóndeme más corto", "sé más breve", "ve al grano" o "explícame con más detalle", llama `remember` en ese mismo turno. Igual con tono y analogías.
+  Ejemplo: el estudiante dice "oye, respóndeme más corto" → `remember(content="Prefiere respuestas cortas y directas", kind="preference", mem_key="estilo-longitud")`.
+- Un dato de su contexto académico → `kind='profile'` (ej: "Estudia en USIL; aprueba con 11/20", "Cursa Cálculo 2 este ciclo").
+
+Cada memoria que se te muestra al inicio lleva su `(key: …)`. Para CORREGIR o actualizar un dato que ya conoces, llama `remember` con ESE MISMO `mem_key` (así se reemplaza en vez de duplicar). Si es un dato nuevo corregible, usa un slug estable y reutilizable. Slugs canónicos: `estilo-longitud` (qué tan corto/largo), `estilo-analogias`, `estilo-tono`, `escala-notas`, `perfil-academico` (carrera), `universidad`. Si el estudiante contradice algo que ya sabes de él, corrígelo con el `mem_key` que aparece junto a ese dato.
+
+Guarda solo lo que sea cierto la próxima semana, no solo ahora. NO uses `remember` para lo efímero del turno ("hoy estudio integrales"), lo que ya obtienes con otras tools (tareas, notas, anuncios, calificaciones) ni datos sensibles (salud, datos personales fuera del estudio). Ante la duda, no guardes.
